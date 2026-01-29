@@ -13,6 +13,7 @@
   "description": "",
   "devDependencies": {
     "@playwright/test": "^1.58.0",
-    "serve": "^14.2.5"
+    "serve": "^14.2.5",
+    "typescript": "^5.9.3"
   }
 }

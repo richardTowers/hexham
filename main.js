@@ -1,0 +1,1218 @@
+// Type definitions
+/**
+ * @typedef {{ col: number, row: number }} HexCoord
+ * @typedef {{ fill: string, stroke: string }} ColorPair
+ * @typedef {'standard' | 'wall' | 'start' | 'end'} TileType
+ * @typedef {'move' | 'start' | 'end' | 'wall' | 'standard'} ToolType
+ * @typedef {{ x: number, y: number }} Point
+ * @typedef {'empty' | 'maze' | 'scatter' | 'rooms'} MapType
+ */
+
+const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('canvas'));
+const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+
+// Grid configuration
+const GRID_WIDTH = 100;
+const GRID_HEIGHT = 100;
+const HEX_SIZE = 12;
+
+// Hexagon geometry (pointy-topped)
+const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
+const HEX_HEIGHT = 2 * HEX_SIZE;
+const HORIZ_SPACING = HEX_WIDTH;
+const VERT_SPACING = HEX_HEIGHT * 0.75;
+
+/** @type {Record<TileType, ColorPair>} */
+const TILE_TYPES = {
+    standard: { fill: '#2a2a4a', stroke: '#4a4a6a' },
+    wall:     { fill: '#1a1a1a', stroke: '#333' },
+    start:    { fill: '#2ecc71', stroke: '#27ae60' },
+    end:      { fill: '#e74c3c', stroke: '#c0392b' }
+};
+
+// Pathfinding visualization colors
+/** @type {ColorPair} */
+const PATH_COLOR = { fill: '#ff08e8', stroke: '#cc06b9' };
+
+/**
+ * Get visited cell color based on visit order (cycles through hues)
+ * @param {number} visitOrder
+ * @returns {ColorPair}
+ */
+function getVisitedColor(visitOrder) {
+    // Cycle through hues over ~200 steps, then repeat
+    const hue = (visitOrder * 2.5) % 360;
+    // OKLCH gives perceptually uniform colors across the hue spectrum
+    const fill = `oklch(45% 0.07 ${hue})`;
+    const stroke = `oklch(55% 0.09 ${hue})`;
+    return { fill, stroke };
+}
+
+// Grid state - Map with "col,row" keys
+/** @type {Map<string, TileType>} */
+const grid = new Map();
+/** @type {HexCoord | null} */
+let startHex = null;
+/** @type {HexCoord | null} */
+let endHex = null;
+
+// Pathfinding state
+/** @type {Map<string, number>} */
+const visitedHexes = new Map();
+/** @type {Set<string>} */
+const pathHexes = new Set();
+let isSearching = false;
+let maxVisitOrder = 0;
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @returns {string}
+ */
+function getHexKey(col, row) {
+    return `${col},${row}`;
+}
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @returns {TileType}
+ */
+function getHexType(col, row) {
+    return grid.get(getHexKey(col, row)) || 'standard';
+}
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @param {TileType} type
+ */
+function setHexType(col, row, type) {
+    const key = getHexKey(col, row);
+
+    // Handle unique start/end nodes
+    if (type === 'start') {
+        if (startHex) {
+            grid.delete(getHexKey(startHex.col, startHex.row));
+        }
+        startHex = { col, row };
+    } else if (type === 'end') {
+        if (endHex) {
+            grid.delete(getHexKey(endHex.col, endHex.row));
+        }
+        endHex = { col, row };
+    }
+
+    // Clear start/end reference if overwriting
+    if (startHex && startHex.col === col && startHex.row === row && type !== 'start') {
+        startHex = null;
+    }
+    if (endHex && endHex.col === col && endHex.row === row && type !== 'end') {
+        endHex = null;
+    }
+
+    if (type === 'standard') {
+        grid.delete(key);
+    } else {
+        grid.set(key, type);
+    }
+
+    updateGoButton();
+    clearPathfinding();
+}
+
+function clearPathfinding() {
+    visitedHexes.clear();
+    pathHexes.clear();
+    isSearching = false;
+    maxVisitOrder = 0;
+}
+
+function clearGrid() {
+    grid.clear();
+    startHex = null;
+    endHex = null;
+    clearPathfinding();
+}
+
+// Map generators
+const mapGenerators = {
+    empty: generateEmpty,
+    maze: generateMaze,
+    scatter: generateScattered,
+    rooms: generateRooms
+};
+
+function generateEmpty() {
+    clearGrid();
+    startHex = { col: 5, row: 5 };
+    endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+    grid.set(getHexKey(startHex.col, startHex.row), 'start');
+    grid.set(getHexKey(endHex.col, endHex.row), 'end');
+}
+
+/**
+ * Check if path exists between two points (BFS)
+ * @param {number} fromCol
+ * @param {number} fromRow
+ * @param {number} toCol
+ * @param {number} toRow
+ * @returns {HexCoord[] | null}
+ */
+function findPath(fromCol, fromRow, toCol, toRow) {
+    const startKey = getHexKey(fromCol, fromRow);
+    const endKey = getHexKey(toCol, toRow);
+
+    const queue = [{ col: fromCol, row: fromRow }];
+    const cameFrom = new Map();
+    cameFrom.set(startKey, null);
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current) continue;
+        const currentKey = getHexKey(current.col, current.row);
+
+        if (currentKey === endKey) {
+            // Reconstruct path
+            const path = [];
+            let key = endKey;
+            while (key !== null) {
+                const [c, r] = key.split(',').map(Number);
+                path.push({ col: c, row: r });
+                key = cameFrom.get(key);
+            }
+            return path.reverse();
+        }
+
+        for (const neighbor of getNeighbors(current.col, current.row)) {
+            const neighborKey = getHexKey(neighbor.col, neighbor.row);
+            const neighborType = grid.get(neighborKey);
+
+            if (cameFrom.has(neighborKey)) continue;
+            if (neighborType === 'wall') continue;
+
+            cameFrom.set(neighborKey, currentKey);
+            queue.push(neighbor);
+        }
+    }
+
+    return null; // No path found
+}
+
+// Carve a path through walls if needed
+function ensurePathExists() {
+    if (!startHex || !endHex) return;
+
+    const path = findPath(startHex.col, startHex.row, endHex.col, endHex.row);
+    if (path) return; // Path already exists
+
+    // No path - carve one using A* through walls
+    const startKey = getHexKey(startHex.col, startHex.row);
+    const endKey = getHexKey(endHex.col, endHex.row);
+
+    const gScore = new Map();
+    const fScore = new Map();
+    const cameFrom = new Map();
+
+    gScore.set(startKey, 0);
+    fScore.set(startKey, heuristic(startHex.col, startHex.row, endHex.col, endHex.row));
+    cameFrom.set(startKey, null);
+
+    const openSet = [{ col: startHex.col, row: startHex.row }];
+
+    while (openSet.length > 0) {
+        openSet.sort((a, b) => {
+            const fA = fScore.get(getHexKey(a.col, a.row)) || Infinity;
+            const fB = fScore.get(getHexKey(b.col, b.row)) || Infinity;
+            return fA - fB;
+        });
+
+        const current = openSet.shift();
+        if (!current) continue;
+        const currentKey = getHexKey(current.col, current.row);
+
+        if (currentKey === endKey) {
+            // Carve the path
+            let key = endKey;
+            while (key !== null) {
+                const type = grid.get(key);
+                if (type === 'wall') {
+                    grid.delete(key);
+                }
+                key = cameFrom.get(key);
+            }
+            return;
+        }
+
+        const currentG = gScore.get(currentKey);
+
+        for (const neighbor of getNeighbors(current.col, current.row)) {
+            const neighborKey = getHexKey(neighbor.col, neighbor.row);
+            const neighborType = grid.get(neighborKey);
+
+            // Cost is higher to go through walls (encourages using open space)
+            const moveCost = neighborType === 'wall' ? 5 : 1;
+            const tentativeG = currentG + moveCost;
+
+            if (!gScore.has(neighborKey) || tentativeG < gScore.get(neighborKey)) {
+                cameFrom.set(neighborKey, currentKey);
+                gScore.set(neighborKey, tentativeG);
+                fScore.set(neighborKey, tentativeG + heuristic(neighbor.col, neighbor.row, endHex.col, endHex.row));
+                if (!openSet.some(n => n.col === neighbor.col && n.row === neighbor.row)) {
+                    openSet.push(neighbor);
+                }
+            }
+        }
+    }
+}
+
+function generateMaze() {
+    clearGrid();
+
+    // Fill everything with walls first
+    for (let row = 0; row < GRID_HEIGHT; row++) {
+        for (let col = 0; col < GRID_WIDTH; col++) {
+            grid.set(getHexKey(col, row), 'wall');
+        }
+    }
+
+    // Use recursive backtracker with actual hex neighbors
+    // Work on a sparser grid (every other cell) to create corridors
+    const mazeRows = Math.floor(GRID_HEIGHT / 2);
+    const mazeCols = Math.floor(GRID_WIDTH / 2);
+
+    // Map maze coords to grid coords
+    /** @param {number} mc @param {number} mr */
+    const toGrid = (mc, mr) => ({ col: mc * 2 + 1, row: mr * 2 + 1 });
+
+    const visited = new Set();
+    const cellDistances = new Map();
+    const stack = [{ mc: 0, mr: 0, dist: 0 }];
+
+    const startGrid = toGrid(0, 0);
+    visited.add(`${0},${0}`);
+    grid.delete(getHexKey(startGrid.col, startGrid.row));
+    cellDistances.set(`${0},${0}`, 0);
+
+    while (stack.length > 0) {
+        const current = stack[stack.length - 1];
+        const currentGrid = toGrid(current.mc, current.mr);
+
+        // Get unvisited maze neighbors
+        const neighbors = [];
+        const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+        for (const [dmc, dmr] of dirs) {
+            const nmc = current.mc + dmc;
+            const nmr = current.mr + dmr;
+            if (nmc >= 0 && nmc < mazeCols && nmr >= 0 && nmr < mazeRows) {
+                if (!visited.has(`${nmc},${nmr}`)) {
+                    neighbors.push({ mc: nmc, mr: nmr, dmc, dmr });
+                }
+            }
+        }
+
+        if (neighbors.length > 0) {
+            const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+            visited.add(`${next.mc},${next.mr}`);
+
+            const nextGrid = toGrid(next.mc, next.mr);
+
+            // Carve the cell
+            grid.delete(getHexKey(nextGrid.col, nextGrid.row));
+
+            // Carve passage between current and next
+            const wallCol = currentGrid.col + next.dmc;
+            const wallRow = currentGrid.row + next.dmr;
+            grid.delete(getHexKey(wallCol, wallRow));
+
+            const newDist = current.dist + 1;
+            cellDistances.set(`${next.mc},${next.mr}`, newDist);
+
+            stack.push({ mc: next.mc, mr: next.mr, dist: newDist });
+        } else {
+            stack.pop();
+        }
+    }
+
+    // Place start at beginning
+    const startPos = toGrid(0, 0);
+    startHex = { col: startPos.col, row: startPos.row };
+    grid.set(getHexKey(startHex.col, startHex.row), 'start');
+
+    // Place end at the cell furthest from start (in maze distance)
+    let maxDist = 0;
+    let endMc = 0, endMr = 0;
+    for (const [key, dist] of cellDistances) {
+        if (dist > maxDist) {
+            maxDist = dist;
+            const [mc, mr] = key.split(',').map(Number);
+            endMc = mc;
+            endMr = mr;
+        }
+    }
+    const endPos = toGrid(endMc, endMr);
+    endHex = { col: endPos.col, row: endPos.row };
+    grid.set(getHexKey(endHex.col, endHex.row), 'end');
+}
+
+function generateScattered() {
+    clearGrid();
+
+    const density = 0.3;
+    const clusterChance = 0.6;
+
+    // Place start and end first
+    startHex = { col: 5, row: 5 };
+    endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+
+    for (let row = 0; row < GRID_HEIGHT; row++) {
+        for (let col = 0; col < GRID_WIDTH; col++) {
+            if (Math.random() < density) {
+                grid.set(getHexKey(col, row), 'wall');
+
+                // Sometimes create small clusters
+                if (Math.random() < clusterChance) {
+                    for (const neighbor of getNeighbors(col, row)) {
+                        if (Math.random() < 0.4) {
+                            grid.set(getHexKey(neighbor.col, neighbor.row), 'wall');
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Clear area around start and end
+    clearAreaAround(startHex.col, startHex.row, 3);
+    clearAreaAround(endHex.col, endHex.row, 3);
+
+    grid.set(getHexKey(startHex.col, startHex.row), 'start');
+    grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+    // Ensure a path exists
+    ensurePathExists();
+}
+
+function generateRooms() {
+    clearGrid();
+
+    // Fill with walls
+    for (let row = 0; row < GRID_HEIGHT; row++) {
+        for (let col = 0; col < GRID_WIDTH; col++) {
+            grid.set(getHexKey(col, row), 'wall');
+        }
+    }
+
+    // Generate random rooms
+    const rooms = [];
+    const numRooms = 12;
+
+    for (let i = 0; i < numRooms; i++) {
+        const roomW = 6 + Math.floor(Math.random() * 10);
+        const roomH = 6 + Math.floor(Math.random() * 10);
+        const roomX = 2 + Math.floor(Math.random() * (GRID_WIDTH - roomW - 4));
+        const roomY = 2 + Math.floor(Math.random() * (GRID_HEIGHT - roomH - 4));
+
+        rooms.push({ x: roomX, y: roomY, w: roomW, h: roomH });
+
+        // Carve room
+        for (let row = roomY; row < roomY + roomH; row++) {
+            for (let col = roomX; col < roomX + roomW; col++) {
+                grid.delete(getHexKey(col, row));
+            }
+        }
+    }
+
+    // Connect rooms with corridors
+    for (let i = 1; i < rooms.length; i++) {
+        const r1 = rooms[i - 1];
+        const r2 = rooms[i];
+        const x1 = Math.floor(r1.x + r1.w / 2);
+        const y1 = Math.floor(r1.y + r1.h / 2);
+        const x2 = Math.floor(r2.x + r2.w / 2);
+        const y2 = Math.floor(r2.y + r2.h / 2);
+
+        // L-shaped corridor
+        let cx = x1;
+        while (cx !== x2) {
+            grid.delete(getHexKey(cx, y1));
+            grid.delete(getHexKey(cx, y1 + 1));
+            cx += cx < x2 ? 1 : -1;
+        }
+        let cy = y1;
+        while (cy !== y2) {
+            grid.delete(getHexKey(x2, cy));
+            grid.delete(getHexKey(x2 + 1, cy));
+            cy += cy < y2 ? 1 : -1;
+        }
+    }
+
+    // Place start and end in first and last rooms
+    const firstRoom = rooms[0];
+    const lastRoom = rooms[rooms.length - 1];
+    startHex = { col: Math.floor(firstRoom.x + firstRoom.w / 2), row: Math.floor(firstRoom.y + firstRoom.h / 2) };
+    endHex = { col: Math.floor(lastRoom.x + lastRoom.w / 2), row: Math.floor(lastRoom.y + lastRoom.h / 2) };
+
+    grid.set(getHexKey(startHex.col, startHex.row), 'start');
+    grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+    ensurePathExists();
+}
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @param {number} radius
+ */
+function clearAreaAround(col, row, radius) {
+    for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+            const nc = col + dc;
+            const nr = row + dr;
+            if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+                grid.delete(getHexKey(nc, nr));
+            }
+        }
+    }
+}
+
+/**
+ * @param {keyof typeof mapGenerators} type
+ */
+function generateMap(type) {
+    const generator = mapGenerators[type];
+    if (generator) {
+        generator();
+        updateGoButton();
+        draw();
+    }
+}
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @returns {HexCoord[]}
+ */
+function getNeighbors(col, row) {
+    // Offset coordinates for pointy-topped hex grid (odd-r)
+    const evenRowOffsets = [
+        [+1, 0], [0, -1], [-1, -1],
+        [-1, 0], [-1, +1], [0, +1]
+    ];
+    const oddRowOffsets = [
+        [+1, 0], [+1, -1], [0, -1],
+        [-1, 0], [0, +1], [+1, +1]
+    ];
+
+    const offsets = (row % 2 === 0) ? evenRowOffsets : oddRowOffsets;
+    const neighbors = [];
+
+    for (const [dc, dr] of offsets) {
+        const nc = col + dc;
+        const nr = row + dr;
+        if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+            neighbors.push({ col: nc, row: nr });
+        }
+    }
+
+    return neighbors;
+}
+
+function updateGoButton() {
+    const goBtn = /** @type {HTMLButtonElement} */ (document.getElementById('go-btn'));
+    const tooltip = /** @type {HTMLElement} */ (document.getElementById('go-btn-tooltip'));
+
+    const hasStart = startHex !== null;
+    const hasEnd = endHex !== null;
+    const canGo = hasStart && hasEnd && !isSearching;
+
+    goBtn.disabled = !canGo;
+
+    if (isSearching) {
+        tooltip.textContent = 'Searching...';
+    } else if (canGo) {
+        tooltip.textContent = 'Find path from start to end';
+    } else if (!hasStart && !hasEnd) {
+        tooltip.textContent = 'Set a start and end point first';
+    } else if (!hasStart) {
+        tooltip.textContent = 'Set a start point first';
+    } else {
+        tooltip.textContent = 'Set an end point first';
+    }
+}
+
+// View transform state
+let offsetX = 0;
+let offsetY = 0;
+let scale = 1;
+const MIN_SCALE = 0.1;
+const MAX_SCALE = 5;
+
+function fitGridToView() {
+    // Calculate total grid world-space dimensions
+    const gridWorldWidth = HEX_WIDTH + GRID_WIDTH * HORIZ_SPACING;
+    const gridWorldHeight = HEX_SIZE * 2 + GRID_HEIGHT * VERT_SPACING;
+
+    // Calculate scale to fit grid in viewport with some padding
+    const padding = 20;
+    const availableWidth = canvas.width - padding * 2;
+    const availableHeight = canvas.height - padding * 2;
+
+    const scaleX = availableWidth / gridWorldWidth;
+    const scaleY = availableHeight / gridWorldHeight;
+    scale = Math.min(scaleX, scaleY, MAX_SCALE);
+    scale = Math.max(scale, MIN_SCALE);
+
+    // Position grid at top left with padding
+    offsetX = padding;
+    offsetY = padding;
+}
+
+// Interaction state
+let isPanning = false;
+let panStartX = 0;
+let panStartY = 0;
+/** @type {Point | null} */
+let mouseDownPos = null;
+/** @type {HexCoord | null} */
+let hoveredHex = null;
+/** @type {ToolType} */
+let selectedTileType = 'move';
+
+function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    fitGridToView();
+    draw();
+}
+
+/**
+ * Convert client (viewport) coordinates to canvas-relative coordinates
+ * @param {number} clientX
+ * @param {number} clientY
+ * @returns {Point}
+ */
+function toCanvasCoords(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+/**
+ * @param {number} cx
+ * @param {number} cy
+ * @param {number} size
+ */
+function drawHexagon(cx, cy, size) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = (Math.PI / 3) * i - Math.PI / 6;
+        const x = cx + size * Math.cos(angle);
+        const y = cy + size * Math.sin(angle);
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    }
+    ctx.closePath();
+}
+
+/**
+ * @param {number} col
+ * @param {number} row
+ * @returns {Point}
+ */
+function hexToPixel(col, row) {
+    const x = HEX_WIDTH / 2 + col * HORIZ_SPACING + (row % 2) * (HORIZ_SPACING / 2);
+    const y = HEX_SIZE + row * VERT_SPACING;
+    return { x, y };
+}
+
+/**
+ * @param {number} px
+ * @param {number} py
+ * @returns {HexCoord | null}
+ */
+function pixelToHex(px, py) {
+    // Convert screen coords to world coords
+    const worldX = (px - offsetX) / scale;
+    const worldY = (py - offsetY) / scale;
+
+    // Approximate row
+    const approxRow = Math.round((worldY - HEX_SIZE) / VERT_SPACING);
+
+    // Check nearby rows for the closest hex
+    let closest = null;
+    let closestDist = Infinity;
+
+    for (let row = approxRow - 1; row <= approxRow + 1; row++) {
+        if (row < 0 || row >= GRID_HEIGHT) continue;
+
+        const rowOffset = (row % 2) * (HORIZ_SPACING / 2);
+        const approxCol = Math.round((worldX - HEX_WIDTH / 2 - rowOffset) / HORIZ_SPACING);
+
+        for (let col = approxCol - 1; col <= approxCol + 1; col++) {
+            if (col < 0 || col >= GRID_WIDTH) continue;
+
+            const { x, y } = hexToPixel(col, row);
+            const dist = Math.hypot(worldX - x, worldY - y);
+
+            if (dist < closestDist && dist < HEX_SIZE) {
+                closestDist = dist;
+                closest = { col, row };
+            }
+        }
+    }
+
+    return closest;
+}
+
+function getVisibleRange() {
+    const invScale = 1 / scale;
+    const left = -offsetX * invScale;
+    const top = -offsetY * invScale;
+    const right = left + canvas.width * invScale;
+    const bottom = top + canvas.height * invScale;
+
+    const minCol = Math.max(0, Math.floor(left / HORIZ_SPACING) - 1);
+    const maxCol = Math.min(GRID_WIDTH - 1, Math.ceil(right / HORIZ_SPACING) + 1);
+    const minRow = Math.max(0, Math.floor(top / VERT_SPACING) - 1);
+    const maxRow = Math.min(GRID_HEIGHT - 1, Math.ceil(bottom / VERT_SPACING) + 1);
+
+    return { minCol, maxCol, minRow, maxRow };
+}
+
+function draw() {
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+
+    const { minCol, maxCol, minRow, maxRow } = getVisibleRange();
+
+    for (let row = minRow; row <= maxRow; row++) {
+        for (let col = minCol; col <= maxCol; col++) {
+            const { x, y } = hexToPixel(col, row);
+            const type = getHexType(col, row);
+            const key = getHexKey(col, row);
+            const isHovered = hoveredHex && hoveredHex.col === col && hoveredHex.row === row;
+            const isPath = pathHexes.has(key);
+            const visitOrder = visitedHexes.get(key);
+            const isVisited = visitOrder !== undefined;
+
+            // Determine colors based on state
+            let colors;
+            if (isPath && type !== 'start' && type !== 'end') {
+                colors = PATH_COLOR;
+            } else if (isVisited && type === 'standard') {
+                colors = getVisitedColor(visitOrder);
+            } else {
+                colors = TILE_TYPES[type];
+            }
+
+            drawHexagon(x, y, HEX_SIZE);
+
+            // Fill
+            if (isHovered) {
+                ctx.fillStyle = lightenColor(colors.fill, 30);
+            } else {
+                ctx.fillStyle = colors.fill;
+            }
+            ctx.fill();
+
+            // Stroke
+            ctx.strokeStyle = isHovered ? '#fff' : colors.stroke;
+            ctx.lineWidth = (isHovered ? 2 : 1) / scale;
+            ctx.stroke();
+        }
+    }
+
+    ctx.restore();
+}
+
+/**
+ * @param {string} hex
+ * @param {number} amount
+ * @returns {string}
+ */
+function lightenColor(hex, amount) {
+    const num = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, (num >> 16) + amount);
+    const g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
+    const b = Math.min(255, (num & 0x0000FF) + amount);
+    return `rgb(${r},${g},${b})`;
+}
+
+// Mouse handlers
+let isMouseDown = false;
+/** @type {HexCoord | null} */
+let lastPaintedHex = null;
+
+canvas.addEventListener('mousedown', (e) => {
+    const pos = toCanvasCoords(e.clientX, e.clientY);
+    isMouseDown = true;
+    mouseDownPos = pos;
+
+    if (selectedTileType === 'move') {
+        // Pan mode
+        isPanning = true;
+        panStartX = pos.x - offsetX;
+        panStartY = pos.y - offsetY;
+        canvas.style.cursor = 'grabbing';
+    } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+        // Draw mode - paint immediately on mousedown
+        const hex = pixelToHex(pos.x, pos.y);
+        if (hex) {
+            setHexType(hex.col, hex.row, selectedTileType);
+            lastPaintedHex = hex;
+            draw();
+        }
+    }
+    // Start/End: handled on mouseup (click only)
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    const pos = toCanvasCoords(e.clientX, e.clientY);
+    // Update hover
+    const newHovered = pixelToHex(pos.x, pos.y);
+    const hoverChanged = (!hoveredHex && newHovered) ||
+                         (hoveredHex && !newHovered) ||
+                         (hoveredHex && newHovered && (hoveredHex.col !== newHovered.col || hoveredHex.row !== newHovered.row));
+
+    if (hoverChanged) {
+        hoveredHex = newHovered;
+        if (!isMouseDown) draw();
+    }
+
+    if (isMouseDown) {
+        if (selectedTileType === 'move') {
+            // Pan
+            offsetX = pos.x - panStartX;
+            offsetY = pos.y - panStartY;
+            hoveredHex = pixelToHex(pos.x, pos.y);
+            draw();
+        } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+            // Draw mode - paint as we drag
+            const hex = pixelToHex(pos.x, pos.y);
+            if (hex && (!lastPaintedHex || hex.col !== lastPaintedHex.col || hex.row !== lastPaintedHex.row)) {
+                setHexType(hex.col, hex.row, selectedTileType);
+                lastPaintedHex = hex;
+                draw();
+            }
+        }
+    }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+    const pos = toCanvasCoords(e.clientX, e.clientY);
+    if (mouseDownPos && (selectedTileType === 'start' || selectedTileType === 'end')) {
+        // Start/End: click to place
+        const dist = Math.hypot(pos.x - mouseDownPos.x, pos.y - mouseDownPos.y);
+        if (dist < 5) {
+            const hex = pixelToHex(pos.x, pos.y);
+            if (hex) {
+                setHexType(hex.col, hex.row, selectedTileType);
+                draw();
+            }
+        }
+    }
+    isMouseDown = false;
+    isPanning = false;
+    mouseDownPos = null;
+    lastPaintedHex = null;
+    updateCursor();
+});
+
+canvas.addEventListener('mouseleave', () => {
+    isMouseDown = false;
+    isPanning = false;
+    mouseDownPos = null;
+    lastPaintedHex = null;
+    hoveredHex = null;
+    updateCursor();
+    draw();
+});
+
+/**
+ * Zoom toward a point (used by both wheel and pinch zoom)
+ * @param {number} newScale
+ * @param {number} focusX
+ * @param {number} focusY
+ */
+function zoomToward(newScale, focusX, focusY) {
+    newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+    const scaleChange = newScale / scale;
+    offsetX = focusX - (focusX - offsetX) * scaleChange;
+    offsetY = focusY - (focusY - offsetY) * scaleChange;
+    scale = newScale;
+}
+
+// Wheel zoom handler
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const pos = toCanvasCoords(e.clientX, e.clientY);
+    const zoomFactor = e.deltaY < 0 ? 1.03 : 0.97;
+    zoomToward(scale * zoomFactor, pos.x, pos.y);
+    draw();
+}, { passive: false });
+
+// Pinch-to-zoom support
+/** @type {number | null} */
+let lastPinchDist = null;
+/** @type {Point | null} */
+let lastPinchCenter = null;
+
+/**
+ * @param {Touch} t0
+ * @param {Touch} t1
+ * @returns {Point}
+ */
+function getTouchCenter(t0, t1) {
+    const clientX = (t0.clientX + t1.clientX) / 2;
+    const clientY = (t0.clientY + t1.clientY) / 2;
+    return toCanvasCoords(clientX, clientY);
+}
+
+canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastPinchDist = Math.hypot(dx, dy);
+        lastPinchCenter = getTouchCenter(e.touches[0], e.touches[1]);
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && lastPinchDist !== null && lastPinchCenter !== null) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const pinchDist = Math.hypot(dx, dy);
+        const pinchCenter = getTouchCenter(e.touches[0], e.touches[1]);
+
+        // Zoom based on pinch distance change
+        const zoomFactor = pinchDist / lastPinchDist;
+        zoomToward(scale * zoomFactor, pinchCenter.x, pinchCenter.y);
+
+        // Pan based on pinch center movement
+        offsetX += pinchCenter.x - lastPinchCenter.x;
+        offsetY += pinchCenter.y - lastPinchCenter.y;
+
+        lastPinchDist = pinchDist;
+        lastPinchCenter = pinchCenter;
+        draw();
+    }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+    if (e.touches.length < 2) {
+        lastPinchDist = null;
+        lastPinchCenter = null;
+    }
+});
+
+// Toolbar handling
+const tileButtons = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('.tile-btn'));
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') {
+        fitGridToView();
+        draw();
+    }
+    // Number keys for tool selection
+    /** @type {Record<string, ToolType>} */
+    const typeMap = { '1': 'move', '2': 'start', '3': 'end', '4': 'wall', '5': 'standard' };
+    if (e.key in typeMap) {
+        selectedTileType = typeMap[e.key];
+        tileButtons.forEach(b => {
+            b.classList.toggle('active', b.dataset.type === selectedTileType);
+        });
+        updateCursor();
+    }
+});
+
+function updateCursor() {
+    if (selectedTileType === 'move') {
+        canvas.style.cursor = 'grab';
+    } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+        canvas.style.cursor = 'crosshair';
+    } else {
+        canvas.style.cursor = 'pointer';
+    }
+}
+
+tileButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        tileButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedTileType = /** @type {ToolType} */ (btn.dataset.type);
+        updateCursor();
+    });
+});
+
+// Go button
+const goBtn = /** @type {HTMLButtonElement} */ (document.getElementById('go-btn'));
+goBtn.addEventListener('click', () => {
+    if (startHex && endHex) {
+        runPathfinding();
+    }
+});
+
+// Generate button
+const generateBtn = /** @type {HTMLButtonElement} */ (document.getElementById('generate-btn'));
+const mapSelect = /** @type {HTMLSelectElement} */ (document.getElementById('map-select'));
+generateBtn.addEventListener('click', () => {
+    const mapType = /** @type {MapType} */ (mapSelect.value);
+    generateMap(mapType);
+});
+
+// Heuristic for A* and Greedy (hex distance)
+/**
+ * @param {number} col1
+ * @param {number} row1
+ * @param {number} col2
+ * @param {number} row2
+ */
+function heuristic(col1, row1, col2, row2) {
+    // Convert offset to cube coordinates for accurate hex distance
+    const x1 = col1 - (row1 - (row1 & 1)) / 2;
+    const z1 = row1;
+    const y1 = -x1 - z1;
+
+    const x2 = col2 - (row2 - (row2 & 1)) / 2;
+    const z2 = row2;
+    const y2 = -x2 - z2;
+
+    return (Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2)) / 2;
+}
+
+const algorithmSelect = /** @type {HTMLSelectElement} */ (document.getElementById('algorithm-select'));
+
+async function runPathfinding() {
+    if (isSearching) return;
+    if (!startHex || !endHex) return;
+
+    // Clear previous results
+    clearPathfinding();
+    isSearching = true;
+    updateGoButton();
+    draw();
+
+    const algorithm = algorithmSelect.value;
+    const startKey = getHexKey(startHex.col, startHex.row);
+    const endKey = getHexKey(endHex.col, endHex.row);
+
+    const cameFrom = new Map();
+    cameFrom.set(startKey, null);
+
+    let found = false;
+    let stepCount = 0;
+
+    if (algorithm === 'bfs') {
+        // Breadth-First Search
+        const queue = [{ col: startHex.col, row: startHex.row }];
+
+        while (queue.length > 0 && !found) {
+            const current = queue.shift();
+            if (!current) continue;
+            const currentKey = getHexKey(current.col, current.row);
+
+            visitedHexes.set(currentKey, stepCount);
+            maxVisitOrder = stepCount;
+            stepCount++;
+            if (stepCount % 10 === 0) {
+                draw();
+                await sleep(5);
+            }
+
+            if (currentKey === endKey) {
+                found = true;
+                break;
+            }
+
+            for (const neighbor of getNeighbors(current.col, current.row)) {
+                const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                if (cameFrom.has(neighborKey)) continue;
+                if (neighborType === 'wall') continue;
+
+                cameFrom.set(neighborKey, currentKey);
+                queue.push(neighbor);
+            }
+        }
+
+    } else if (algorithm === 'dfs') {
+        // Depth-First Search
+        const stack = [{ col: startHex.col, row: startHex.row }];
+
+        while (stack.length > 0 && !found) {
+            const current = stack.pop();
+            if (!current) continue;
+            const currentKey = getHexKey(current.col, current.row);
+
+            if (visitedHexes.has(currentKey)) continue;
+            visitedHexes.set(currentKey, stepCount);
+            maxVisitOrder = stepCount;
+
+            stepCount++;
+            if (stepCount % 10 === 0) {
+                draw();
+                await sleep(5);
+            }
+
+            if (currentKey === endKey) {
+                found = true;
+                break;
+            }
+
+            for (const neighbor of getNeighbors(current.col, current.row)) {
+                const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                if (visitedHexes.has(neighborKey)) continue;
+                if (neighborType === 'wall') continue;
+
+                if (!cameFrom.has(neighborKey)) {
+                    cameFrom.set(neighborKey, currentKey);
+                }
+                stack.push(neighbor);
+            }
+        }
+
+    } else if (algorithm === 'astar') {
+        // A* Search
+        const gScore = new Map();
+        const fScore = new Map();
+        gScore.set(startKey, 0);
+        fScore.set(startKey, heuristic(startHex.col, startHex.row, endHex.col, endHex.row));
+
+        const openSet = [{ col: startHex.col, row: startHex.row }];
+
+        while (openSet.length > 0 && !found) {
+            openSet.sort((a, b) => {
+                const fA = fScore.get(getHexKey(a.col, a.row)) || Infinity;
+                const fB = fScore.get(getHexKey(b.col, b.row)) || Infinity;
+                return fA - fB;
+            });
+
+            const current = openSet.shift();
+            if (!current) continue;
+            const currentKey = getHexKey(current.col, current.row);
+
+            if (visitedHexes.has(currentKey)) continue;
+            visitedHexes.set(currentKey, stepCount);
+            maxVisitOrder = stepCount;
+
+            stepCount++;
+            if (stepCount % 10 === 0) {
+                draw();
+                await sleep(5);
+            }
+
+            if (currentKey === endKey) {
+                found = true;
+                break;
+            }
+
+            const currentG = gScore.get(currentKey);
+
+            for (const neighbor of getNeighbors(current.col, current.row)) {
+                const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                if (visitedHexes.has(neighborKey)) continue;
+                if (neighborType === 'wall') continue;
+
+                const tentativeG = currentG + 1;
+
+                if (!gScore.has(neighborKey) || tentativeG < gScore.get(neighborKey)) {
+                    cameFrom.set(neighborKey, currentKey);
+                    gScore.set(neighborKey, tentativeG);
+                    fScore.set(neighborKey, tentativeG + heuristic(neighbor.col, neighbor.row, endHex.col, endHex.row));
+                    openSet.push(neighbor);
+                }
+            }
+        }
+
+    } else if (algorithm === 'greedy') {
+        // Greedy Best-First Search
+        // endHex is guaranteed non-null here due to early return
+        const endCol = endHex.col;
+        const endRow = endHex.row;
+        const openSet = [{ col: startHex.col, row: startHex.row }];
+
+        while (openSet.length > 0 && !found) {
+            openSet.sort((a, b) => {
+                const hA = heuristic(a.col, a.row, endCol, endRow);
+                const hB = heuristic(b.col, b.row, endCol, endRow);
+                return hA - hB;
+            });
+
+            const current = openSet.shift();
+            if (!current) continue;
+            const currentKey = getHexKey(current.col, current.row);
+
+            if (visitedHexes.has(currentKey)) continue;
+            visitedHexes.set(currentKey, stepCount);
+            maxVisitOrder = stepCount;
+
+            stepCount++;
+            if (stepCount % 10 === 0) {
+                draw();
+                await sleep(5);
+            }
+
+            if (currentKey === endKey) {
+                found = true;
+                break;
+            }
+
+            for (const neighbor of getNeighbors(current.col, current.row)) {
+                const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                if (visitedHexes.has(neighborKey)) continue;
+                if (neighborType === 'wall') continue;
+
+                if (!cameFrom.has(neighborKey)) {
+                    cameFrom.set(neighborKey, currentKey);
+                    openSet.push(neighbor);
+                }
+            }
+        }
+    }
+
+    // Reconstruct path if found
+    if (found) {
+        let currentKey = endKey;
+        while (currentKey !== null) {
+            pathHexes.add(currentKey);
+            currentKey = cameFrom.get(currentKey);
+        }
+    }
+
+    isSearching = false;
+    updateGoButton();
+    draw();
+}
+
+/** @param {number} ms */
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+window.addEventListener('resize', resizeCanvas);
+const initialRect = canvas.getBoundingClientRect();
+canvas.width = initialRect.width;
+canvas.height = initialRect.height;
+generateMap('empty');
+fitGridToView();
+updateCursor();
+draw();
