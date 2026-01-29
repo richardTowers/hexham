@@ -200,8 +200,17 @@
         };
 
         // Pathfinding visualization colors
-        const VISITED_COLOR = { fill: '#3d3d5c', stroke: '#5a5a7a' };
         const PATH_COLOR = { fill: '#f39c12', stroke: '#e67e22' };
+
+        // Get visited cell color based on visit order (cycles through hues)
+        function getVisitedColor(visitOrder) {
+            // Cycle through hues over ~200 steps, then repeat
+            const hue = (visitOrder * 2.5) % 360;
+            // Low saturation for subtle effect, moderate lightness
+            const fill = `hsl(${hue}, 25%, 28%)`;
+            const stroke = `hsl(${hue}, 30%, 38%)`;
+            return { fill, stroke };
+        }
 
         // Grid state - Map with "col,row" keys
         const grid = new Map();
@@ -209,9 +218,10 @@
         let endHex = null;
 
         // Pathfinding state
-        const visitedHexes = new Set();
+        const visitedHexes = new Map(); // key -> visit order
         const pathHexes = new Set();
         let isSearching = false;
+        let maxVisitOrder = 0;
 
         function getHexKey(col, row) {
             return `${col},${row}`;
@@ -259,6 +269,7 @@
             visitedHexes.clear();
             pathHexes.clear();
             isSearching = false;
+            maxVisitOrder = 0;
         }
 
         function getNeighbors(col, row) {
@@ -417,14 +428,15 @@
                     const key = getHexKey(col, row);
                     const isHovered = hoveredHex && hoveredHex.col === col && hoveredHex.row === row;
                     const isPath = pathHexes.has(key);
-                    const isVisited = visitedHexes.has(key);
+                    const visitOrder = visitedHexes.get(key);
+                    const isVisited = visitOrder !== undefined;
 
                     // Determine colors based on state
                     let colors;
                     if (isPath && type !== 'start' && type !== 'end') {
                         colors = PATH_COLOR;
                     } else if (isVisited && type === 'standard') {
-                        colors = VISITED_COLOR;
+                        colors = getVisitedColor(visitOrder);
                     } else {
                         colors = TILE_TYPES[type];
                     }
@@ -603,7 +615,8 @@
                     const current = queue.shift();
                     const currentKey = getHexKey(current.col, current.row);
 
-                    visitedHexes.add(currentKey);
+                    visitedHexes.set(currentKey, stepCount);
+                    maxVisitOrder = stepCount;
                     stepCount++;
                     if (stepCount % 10 === 0) {
                         draw();
@@ -636,7 +649,8 @@
                     const currentKey = getHexKey(current.col, current.row);
 
                     if (visitedHexes.has(currentKey)) continue;
-                    visitedHexes.add(currentKey);
+                    visitedHexes.set(currentKey, stepCount);
+                    maxVisitOrder = stepCount;
 
                     stepCount++;
                     if (stepCount % 10 === 0) {
@@ -677,7 +691,8 @@
                     const currentKey = getHexKey(current.col, current.row);
 
                     if (visitedHexes.has(currentKey)) continue;
-                    visitedHexes.add(currentKey);
+                    visitedHexes.set(currentKey, stepCount);
+                    maxVisitOrder = stepCount;
 
                     stepCount++;
                     if (stepCount % 10 === 0) {
@@ -728,7 +743,8 @@
                     const currentKey = getHexKey(current.col, current.row);
 
                     if (visitedHexes.has(currentKey)) continue;
-                    visitedHexes.add(currentKey);
+                    visitedHexes.set(currentKey, stepCount);
+                    maxVisitOrder = stepCount;
 
                     stepCount++;
                     if (stepCount % 10 === 0) {
@@ -776,7 +792,8 @@
                     const currentKey = getHexKey(current.col, current.row);
 
                     if (visitedHexes.has(currentKey)) continue;
-                    visitedHexes.add(currentKey);
+                    visitedHexes.set(currentKey, stepCount);
+                    maxVisitOrder = stepCount;
 
                     stepCount++;
                     if (stepCount % 10 === 0) {
