@@ -707,11 +707,9 @@
             scale = Math.min(scaleX, scaleY, MAX_SCALE);
             scale = Math.max(scale, MIN_SCALE);
 
-            // Center the grid
-            const scaledWidth = gridWorldWidth * scale;
-            const scaledHeight = gridWorldHeight * scale;
-            offsetX = (canvas.width - scaledWidth) / 2;
-            offsetY = (canvas.height - scaledHeight) / 2;
+            // Position grid at top left with padding
+            offsetX = padding;
+            offsetY = padding;
         }
 
         // Interaction state
