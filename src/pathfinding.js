@@ -1,6 +1,16 @@
 import { getHexKey, getHexType, visitedHexes, pathHexes, clearPathfinding, getStartHex, getEndHex, setIsSearching, setMaxVisitOrder } from './grid.js';
 import { getNeighbors, heuristic } from './hex-utils.js';
 
+// Cancellation state
+let cancelRequested = false;
+
+/**
+ * Request cancellation of the current pathfinding run
+ */
+export function cancelPathfinding() {
+    cancelRequested = true;
+}
+
 // Speed presets: { stepsPerFrame, targetFps }
 const SPEED_PRESETS = {
     slow: { stepsPerFrame: 5, targetFps: 30 },
@@ -62,8 +72,9 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
 
     if (!startHex || !endHex) return;
 
-    // Clear previous results
+    // Clear previous results and reset cancel state
     clearPathfinding();
+    cancelRequested = false;
     setIsSearching(true);
     updateGoButton();
     draw();
@@ -84,15 +95,17 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
 
     /**
      * Check if we should yield to render a frame
-     * @returns {Promise<void>}
+     * @returns {Promise<boolean>} true if cancelled
      */
     async function maybeYield() {
+        if (cancelRequested) return true;
         stepsThisFrame++;
         if (stepsThisFrame >= stepsPerFrame) {
             draw();
             lastFrameTime = await nextFrame(lastFrameTime, frameTime);
             stepsThisFrame = 0;
         }
+        return cancelRequested;
     }
 
     if (algorithm === 'bfs') {
@@ -107,7 +120,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             visitedHexes.set(currentKey, stepCount);
             setMaxVisitOrder(stepCount);
             stepCount++;
-            await maybeYield();
+            if (await maybeYield()) break;
 
             if (currentKey === endKey) {
                 found = true;
@@ -140,7 +153,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            await maybeYield();
+            if (await maybeYield()) break;
 
             if (currentKey === endKey) {
                 found = true;
@@ -186,7 +199,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            await maybeYield();
+            if (await maybeYield()) break;
 
             if (currentKey === endKey) {
                 found = true;
@@ -235,7 +248,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            await maybeYield();
+            if (await maybeYield()) break;
 
             if (currentKey === endKey) {
                 found = true;

@@ -8,7 +8,7 @@
 import { setHexType, getStartHex, getEndHex, getIsSearching } from './grid.js';
 import { pixelToHex, toCanvasCoords } from './hex-utils.js';
 import { mapGenerators } from './map-generators.js';
-import { runPathfinding } from './pathfinding.js';
+import { runPathfinding, cancelPathfinding } from './pathfinding.js';
 import { getCanvas, getOffsetX, getOffsetY, getScale, setOffsetX, setOffsetY, setHoveredHex, getHoveredHex, zoomToward, fitGridToView, draw } from './renderer.js';
 
 // Interaction state
@@ -52,18 +52,24 @@ export function updateGoButton() {
     const hasEnd = endHex !== null;
     const canGo = hasStart && hasEnd && !isSearching;
 
-    goBtn.disabled = !canGo;
-
     if (isSearching) {
-        goBtnTooltip.textContent = 'Searching...';
-    } else if (canGo) {
-        goBtnTooltip.textContent = 'Find path from start to end';
-    } else if (!hasStart && !hasEnd) {
-        goBtnTooltip.textContent = 'Set a start and end point first';
-    } else if (!hasStart) {
-        goBtnTooltip.textContent = 'Set a start point first';
+        goBtn.disabled = false;
+        goBtn.textContent = 'Cancel';
+        goBtn.classList.add('cancel');
+        goBtnTooltip.textContent = 'Stop the search';
     } else {
-        goBtnTooltip.textContent = 'Set an end point first';
+        goBtn.disabled = !canGo;
+        goBtn.textContent = 'Go!';
+        goBtn.classList.remove('cancel');
+        if (canGo) {
+            goBtnTooltip.textContent = 'Find path from start to end';
+        } else if (!hasStart && !hasEnd) {
+            goBtnTooltip.textContent = 'Set a start and end point first';
+        } else if (!hasStart) {
+            goBtnTooltip.textContent = 'Set a start point first';
+        } else {
+            goBtnTooltip.textContent = 'Set an end point first';
+        }
     }
 }
 
@@ -281,12 +287,14 @@ export function initInput() {
         });
     });
 
-    // Go button
+    // Go/Cancel button
     goBtn.addEventListener('click', () => {
         const startHex = getStartHex();
         const endHex = getEndHex();
         const isSearching = getIsSearching();
-        if (startHex && endHex && !isSearching) {
+        if (isSearching) {
+            cancelPathfinding();
+        } else if (startHex && endHex) {
             runPathfinding(algorithmSelect.value, draw, updateGoButton);
         }
     });
