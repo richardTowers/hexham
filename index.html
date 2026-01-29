@@ -19,7 +19,6 @@
         }
         canvas {
             display: block;
-            cursor: crosshair;
             flex: 1;
             min-height: 0;
         }
@@ -159,7 +158,11 @@
 </head>
 <body>
     <div id="toolbar">
-        <button class="tile-btn active" data-type="start">
+        <button class="tile-btn active" data-type="move">
+            <span class="tile-swatch" style="background: #666; font-size: 10px; display: flex; align-items: center; justify-content: center;">✥</span>
+            Move
+        </button>
+        <button class="tile-btn" data-type="start">
             <span class="tile-swatch" style="background: #2ecc71;"></span>
             Start
         </button>
@@ -197,7 +200,7 @@
         </div>
     </div>
     <canvas id="canvas"></canvas>
-    <div id="controls">Drag to pan | Scroll to zoom | R to reset | 1-4 to select tile type</div>
+    <div id="controls">Scroll to zoom | R to reset view | 1-5 to select tool</div>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -718,7 +721,7 @@
         let panStartY = 0;
         let mouseDownPos = null;
         let hoveredHex = null;
-        let selectedTileType = 'start';
+        let selectedTileType = 'move';
 
         function resizeCanvas() {
             const rect = canvas.getBoundingClientRect();
@@ -863,12 +866,30 @@
         }
 
         // Mouse handlers
+        let isMouseDown = false;
+        let lastPaintedHex = null;
+
         canvas.addEventListener('mousedown', (e) => {
             const pos = toCanvasCoords(e.clientX, e.clientY);
-            isPanning = true;
-            panStartX = pos.x - offsetX;
-            panStartY = pos.y - offsetY;
+            isMouseDown = true;
             mouseDownPos = pos;
+
+            if (selectedTileType === 'move') {
+                // Pan mode
+                isPanning = true;
+                panStartX = pos.x - offsetX;
+                panStartY = pos.y - offsetY;
+                canvas.style.cursor = 'grabbing';
+            } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+                // Draw mode - paint immediately on mousedown
+                const hex = pixelToHex(pos.x, pos.y);
+                if (hex) {
+                    setHexType(hex.col, hex.row, selectedTileType);
+                    lastPaintedHex = hex;
+                    draw();
+                }
+            }
+            // Start/End: handled on mouseup (click only)
         });
 
         canvas.addEventListener('mousemove', (e) => {
@@ -881,23 +902,33 @@
 
             if (hoverChanged) {
                 hoveredHex = newHovered;
-                if (!isPanning) draw();
+                if (!isMouseDown) draw();
             }
 
-            // Pan
-            if (isPanning) {
-                offsetX = pos.x - panStartX;
-                offsetY = pos.y - panStartY;
-                hoveredHex = pixelToHex(pos.x, pos.y);
-                draw();
+            if (isMouseDown) {
+                if (selectedTileType === 'move') {
+                    // Pan
+                    offsetX = pos.x - panStartX;
+                    offsetY = pos.y - panStartY;
+                    hoveredHex = pixelToHex(pos.x, pos.y);
+                    draw();
+                } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+                    // Draw mode - paint as we drag
+                    const hex = pixelToHex(pos.x, pos.y);
+                    if (hex && (!lastPaintedHex || hex.col !== lastPaintedHex.col || hex.row !== lastPaintedHex.row)) {
+                        setHexType(hex.col, hex.row, selectedTileType);
+                        lastPaintedHex = hex;
+                        draw();
+                    }
+                }
             }
         });
 
         canvas.addEventListener('mouseup', (e) => {
             const pos = toCanvasCoords(e.clientX, e.clientY);
-            if (mouseDownPos) {
+            if (mouseDownPos && (selectedTileType === 'start' || selectedTileType === 'end')) {
+                // Start/End: click to place
                 const dist = Math.hypot(pos.x - mouseDownPos.x, pos.y - mouseDownPos.y);
-                // Only register click if mouse didn't move much (not a pan)
                 if (dist < 5) {
                     const hex = pixelToHex(pos.x, pos.y);
                     if (hex) {
@@ -906,14 +937,20 @@
                     }
                 }
             }
+            isMouseDown = false;
             isPanning = false;
             mouseDownPos = null;
+            lastPaintedHex = null;
+            updateCursor();
         });
 
         canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
             isPanning = false;
             mouseDownPos = null;
+            lastPaintedHex = null;
             hoveredHex = null;
+            updateCursor();
             draw();
         });
 
@@ -990,23 +1027,36 @@
                 fitGridToView();
                 draw();
             }
-            // Number keys for tile selection
-            const typeMap = { '1': 'standard', '2': 'wall', '3': 'start', '4': 'end' };
+            // Number keys for tool selection
+            const typeMap = { '1': 'move', '2': 'start', '3': 'end', '4': 'wall', '5': 'standard' };
             if (typeMap[e.key]) {
                 selectedTileType = typeMap[e.key];
                 tileButtons.forEach(b => {
                     b.classList.toggle('active', b.dataset.type === selectedTileType);
                 });
+                updateCursor();
             }
         });
 
         // Toolbar handling
         const tileButtons = document.querySelectorAll('.tile-btn');
+
+        function updateCursor() {
+            if (selectedTileType === 'move') {
+                canvas.style.cursor = 'grab';
+            } else if (selectedTileType === 'wall' || selectedTileType === 'standard') {
+                canvas.style.cursor = 'crosshair';
+            } else {
+                canvas.style.cursor = 'pointer';
+            }
+        }
+
         tileButtons.forEach(btn => {
             btn.addEventListener('click', () => {
                 tileButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 selectedTileType = btn.dataset.type;
+                updateCursor();
             });
         });
 
@@ -1294,6 +1344,7 @@
         canvas.height = initialRect.height;
         generateMap('empty');
         fitGridToView();
+        updateCursor();
         draw();
     </script>
 </body>
