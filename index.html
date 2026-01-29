@@ -124,7 +124,7 @@
             border: 5px solid transparent;
             border-bottom-color: rgba(0, 0, 0, 0.85);
         }
-        #algorithm-select {
+        #algorithm-select, #map-select {
             padding: 8px 12px;
             border: 1px solid #4a4a6a;
             border-radius: 6px;
@@ -135,11 +135,25 @@
             cursor: pointer;
             outline: none;
         }
-        #algorithm-select:hover {
+        #algorithm-select:hover, #map-select:hover {
             background: #3a3a5a;
         }
-        #algorithm-select:focus {
+        #algorithm-select:focus, #map-select:focus {
             border-color: #7a7aaa;
+        }
+        #generate-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #9b59b6;
+            color: #fff;
+            font-family: monospace;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        #generate-btn:hover {
+            background: #8e44ad;
         }
     </style>
 </head>
@@ -162,6 +176,15 @@
             <span class="tile-swatch" style="background: #e74c3c;"></span>
             End
         </button>
+        <div class="separator"></div>
+        <select id="map-select">
+            <option value="maze">Maze</option>
+            <option value="scatter">Scattered</option>
+            <option value="spiral">Spiral</option>
+            <option value="rooms">Rooms</option>
+            <option value="wave">Wave</option>
+        </select>
+        <button id="generate-btn">Generate</button>
         <div class="separator"></div>
         <select id="algorithm-select">
             <option value="bfs">BFS</option>
@@ -270,6 +293,429 @@
             pathHexes.clear();
             isSearching = false;
             maxVisitOrder = 0;
+        }
+
+        function clearGrid() {
+            grid.clear();
+            startHex = null;
+            endHex = null;
+            clearPathfinding();
+        }
+
+        // Map generators
+        const mapGenerators = {
+            maze: generateMaze,
+            scatter: generateScattered,
+            spiral: generateSpiral,
+            rooms: generateRooms,
+            wave: generateWave
+        };
+
+        // Check if path exists between two points (BFS)
+        function findPath(fromCol, fromRow, toCol, toRow) {
+            const startKey = getHexKey(fromCol, fromRow);
+            const endKey = getHexKey(toCol, toRow);
+
+            const queue = [{ col: fromCol, row: fromRow }];
+            const cameFrom = new Map();
+            cameFrom.set(startKey, null);
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+                const currentKey = getHexKey(current.col, current.row);
+
+                if (currentKey === endKey) {
+                    // Reconstruct path
+                    const path = [];
+                    let key = endKey;
+                    while (key !== null) {
+                        const [c, r] = key.split(',').map(Number);
+                        path.push({ col: c, row: r });
+                        key = cameFrom.get(key);
+                    }
+                    return path.reverse();
+                }
+
+                for (const neighbor of getNeighbors(current.col, current.row)) {
+                    const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                    const neighborType = grid.get(neighborKey);
+
+                    if (cameFrom.has(neighborKey)) continue;
+                    if (neighborType === 'wall') continue;
+
+                    cameFrom.set(neighborKey, currentKey);
+                    queue.push(neighbor);
+                }
+            }
+
+            return null; // No path found
+        }
+
+        // Carve a path through walls if needed
+        function ensurePathExists() {
+            if (!startHex || !endHex) return;
+
+            const path = findPath(startHex.col, startHex.row, endHex.col, endHex.row);
+            if (path) return; // Path already exists
+
+            // No path - carve one using A* through walls
+            const startKey = getHexKey(startHex.col, startHex.row);
+            const endKey = getHexKey(endHex.col, endHex.row);
+
+            const gScore = new Map();
+            const fScore = new Map();
+            const cameFrom = new Map();
+
+            gScore.set(startKey, 0);
+            fScore.set(startKey, heuristic(startHex.col, startHex.row, endHex.col, endHex.row));
+            cameFrom.set(startKey, null);
+
+            const openSet = [{ col: startHex.col, row: startHex.row }];
+
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => {
+                    const fA = fScore.get(getHexKey(a.col, a.row)) || Infinity;
+                    const fB = fScore.get(getHexKey(b.col, b.row)) || Infinity;
+                    return fA - fB;
+                });
+
+                const current = openSet.shift();
+                const currentKey = getHexKey(current.col, current.row);
+
+                if (currentKey === endKey) {
+                    // Carve the path
+                    let key = endKey;
+                    while (key !== null) {
+                        const type = grid.get(key);
+                        if (type === 'wall') {
+                            grid.delete(key);
+                        }
+                        key = cameFrom.get(key);
+                    }
+                    return;
+                }
+
+                const currentG = gScore.get(currentKey);
+
+                for (const neighbor of getNeighbors(current.col, current.row)) {
+                    const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                    const neighborType = grid.get(neighborKey);
+
+                    // Cost is higher to go through walls (encourages using open space)
+                    const moveCost = neighborType === 'wall' ? 5 : 1;
+                    const tentativeG = currentG + moveCost;
+
+                    if (!gScore.has(neighborKey) || tentativeG < gScore.get(neighborKey)) {
+                        cameFrom.set(neighborKey, currentKey);
+                        gScore.set(neighborKey, tentativeG);
+                        fScore.set(neighborKey, tentativeG + heuristic(neighbor.col, neighbor.row, endHex.col, endHex.row));
+                        if (!openSet.some(n => n.col === neighbor.col && n.row === neighbor.row)) {
+                            openSet.push(neighbor);
+                        }
+                    }
+                }
+            }
+        }
+
+        function generateMaze() {
+            clearGrid();
+
+            // Fill everything with walls first
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    grid.set(getHexKey(col, row), 'wall');
+                }
+            }
+
+            // Use recursive backtracker with actual hex neighbors
+            // Work on a sparser grid (every other cell) to create corridors
+            const mazeRows = Math.floor(GRID_HEIGHT / 2);
+            const mazeCols = Math.floor(GRID_WIDTH / 2);
+
+            // Map maze coords to grid coords
+            const toGrid = (mc, mr) => ({ col: mc * 2 + 1, row: mr * 2 + 1 });
+
+            const visited = new Set();
+            const cellDistances = new Map();
+            const stack = [{ mc: 0, mr: 0, dist: 0 }];
+
+            const startGrid = toGrid(0, 0);
+            visited.add(`${0},${0}`);
+            grid.delete(getHexKey(startGrid.col, startGrid.row));
+            cellDistances.set(`${0},${0}`, 0);
+
+            while (stack.length > 0) {
+                const current = stack[stack.length - 1];
+                const currentGrid = toGrid(current.mc, current.mr);
+
+                // Get unvisited maze neighbors
+                const neighbors = [];
+                const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+                for (const [dmc, dmr] of dirs) {
+                    const nmc = current.mc + dmc;
+                    const nmr = current.mr + dmr;
+                    if (nmc >= 0 && nmc < mazeCols && nmr >= 0 && nmr < mazeRows) {
+                        if (!visited.has(`${nmc},${nmr}`)) {
+                            neighbors.push({ mc: nmc, mr: nmr, dmc, dmr });
+                        }
+                    }
+                }
+
+                if (neighbors.length > 0) {
+                    const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    visited.add(`${next.mc},${next.mr}`);
+
+                    const nextGrid = toGrid(next.mc, next.mr);
+
+                    // Carve the cell
+                    grid.delete(getHexKey(nextGrid.col, nextGrid.row));
+
+                    // Carve passage between current and next
+                    const wallCol = currentGrid.col + next.dmc;
+                    const wallRow = currentGrid.row + next.dmr;
+                    grid.delete(getHexKey(wallCol, wallRow));
+
+                    const newDist = current.dist + 1;
+                    cellDistances.set(`${next.mc},${next.mr}`, newDist);
+
+                    stack.push({ mc: next.mc, mr: next.mr, dist: newDist });
+                } else {
+                    stack.pop();
+                }
+            }
+
+            // Place start at beginning
+            const startPos = toGrid(0, 0);
+            startHex = { col: startPos.col, row: startPos.row };
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+
+            // Place end at the cell furthest from start (in maze distance)
+            let maxDist = 0;
+            let endMc = 0, endMr = 0;
+            for (const [key, dist] of cellDistances) {
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    const [mc, mr] = key.split(',').map(Number);
+                    endMc = mc;
+                    endMr = mr;
+                }
+            }
+            const endPos = toGrid(endMc, endMr);
+            endHex = { col: endPos.col, row: endPos.row };
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+        }
+
+        function generateScattered() {
+            clearGrid();
+
+            const density = 0.3;
+            const clusterChance = 0.6;
+
+            // Place start and end first
+            startHex = { col: 5, row: 5 };
+            endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    if (Math.random() < density) {
+                        grid.set(getHexKey(col, row), 'wall');
+
+                        // Sometimes create small clusters
+                        if (Math.random() < clusterChance) {
+                            for (const neighbor of getNeighbors(col, row)) {
+                                if (Math.random() < 0.4) {
+                                    grid.set(getHexKey(neighbor.col, neighbor.row), 'wall');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Clear area around start and end
+            clearAreaAround(startHex.col, startHex.row, 3);
+            clearAreaAround(endHex.col, endHex.row, 3);
+
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+            // Ensure a path exists
+            ensurePathExists();
+        }
+
+        function generateSpiral() {
+            clearGrid();
+
+            const centerX = GRID_WIDTH / 2;
+            const centerY = GRID_HEIGHT / 2;
+
+            // Create spiral walls
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    const { x, y } = hexToPixel(col, row);
+                    const dx = x - hexToPixel(Math.floor(centerX), Math.floor(centerY)).x;
+                    const dy = y - hexToPixel(Math.floor(centerX), Math.floor(centerY)).y;
+
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx);
+
+                    // Spiral formula
+                    const spiralPhase = (dist / 25 + angle / Math.PI) % 2;
+
+                    if (spiralPhase > 0.3 && spiralPhase < 0.7 && dist > 30 && dist < 400) {
+                        grid.set(getHexKey(col, row), 'wall');
+                    }
+                }
+            }
+
+            // Place start at center, end at edge
+            startHex = { col: Math.floor(centerX), row: Math.floor(centerY) };
+            endHex = { col: GRID_WIDTH - 5, row: Math.floor(GRID_HEIGHT / 2) };
+
+            clearAreaAround(startHex.col, startHex.row, 2);
+            clearAreaAround(endHex.col, endHex.row, 2);
+
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+            ensurePathExists();
+        }
+
+        function generateRooms() {
+            clearGrid();
+
+            // Fill with walls
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    grid.set(getHexKey(col, row), 'wall');
+                }
+            }
+
+            // Generate random rooms
+            const rooms = [];
+            const numRooms = 12;
+
+            for (let i = 0; i < numRooms; i++) {
+                const roomW = 6 + Math.floor(Math.random() * 10);
+                const roomH = 6 + Math.floor(Math.random() * 10);
+                const roomX = 2 + Math.floor(Math.random() * (GRID_WIDTH - roomW - 4));
+                const roomY = 2 + Math.floor(Math.random() * (GRID_HEIGHT - roomH - 4));
+
+                rooms.push({ x: roomX, y: roomY, w: roomW, h: roomH });
+
+                // Carve room
+                for (let row = roomY; row < roomY + roomH; row++) {
+                    for (let col = roomX; col < roomX + roomW; col++) {
+                        grid.delete(getHexKey(col, row));
+                    }
+                }
+            }
+
+            // Connect rooms with corridors
+            for (let i = 1; i < rooms.length; i++) {
+                const r1 = rooms[i - 1];
+                const r2 = rooms[i];
+                const x1 = Math.floor(r1.x + r1.w / 2);
+                const y1 = Math.floor(r1.y + r1.h / 2);
+                const x2 = Math.floor(r2.x + r2.w / 2);
+                const y2 = Math.floor(r2.y + r2.h / 2);
+
+                // L-shaped corridor
+                let cx = x1;
+                while (cx !== x2) {
+                    grid.delete(getHexKey(cx, y1));
+                    grid.delete(getHexKey(cx, y1 + 1));
+                    cx += cx < x2 ? 1 : -1;
+                }
+                let cy = y1;
+                while (cy !== y2) {
+                    grid.delete(getHexKey(x2, cy));
+                    grid.delete(getHexKey(x2 + 1, cy));
+                    cy += cy < y2 ? 1 : -1;
+                }
+            }
+
+            // Place start and end in first and last rooms
+            const firstRoom = rooms[0];
+            const lastRoom = rooms[rooms.length - 1];
+            startHex = { col: Math.floor(firstRoom.x + firstRoom.w / 2), row: Math.floor(firstRoom.y + firstRoom.h / 2) };
+            endHex = { col: Math.floor(lastRoom.x + lastRoom.w / 2), row: Math.floor(lastRoom.y + lastRoom.h / 2) };
+
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+            ensurePathExists();
+        }
+
+        function generateWave() {
+            clearGrid();
+
+            // Create wave-like barriers
+            for (let row = 0; row < GRID_HEIGHT; row++) {
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    const { x, y } = hexToPixel(col, row);
+
+                    // Multiple sine waves
+                    const wave1 = Math.sin(y / 15) * 20;
+                    const wave2 = Math.sin(y / 25 + 2) * 15;
+                    const wave3 = Math.sin(y / 10 + 4) * 10;
+
+                    // Create vertical barriers that follow waves
+                    const barrier1 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH / 4 + wave1));
+                    const barrier2 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH / 2 + wave2));
+                    const barrier3 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH * 3 / 4 + wave3));
+
+                    if (barrier1 < 8 || barrier2 < 8 || barrier3 < 8) {
+                        grid.set(getHexKey(col, row), 'wall');
+                    }
+                }
+            }
+
+            // Create gaps in the waves
+            for (let i = 0; i < 15; i++) {
+                const gapRow = 5 + Math.floor(Math.random() * (GRID_HEIGHT - 10));
+                for (let col = 0; col < GRID_WIDTH; col++) {
+                    for (let r = gapRow - 2; r <= gapRow + 2; r++) {
+                        if (r >= 0 && r < GRID_HEIGHT) {
+                            grid.delete(getHexKey(col, r));
+                        }
+                    }
+                }
+            }
+
+            // Place start and end on opposite sides
+            startHex = { col: 3, row: Math.floor(GRID_HEIGHT / 2) };
+            endHex = { col: GRID_WIDTH - 4, row: Math.floor(GRID_HEIGHT / 2) };
+
+            clearAreaAround(startHex.col, startHex.row, 2);
+            clearAreaAround(endHex.col, endHex.row, 2);
+
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+
+            ensurePathExists();
+        }
+
+        function clearAreaAround(col, row, radius) {
+            for (let dr = -radius; dr <= radius; dr++) {
+                for (let dc = -radius; dc <= radius; dc++) {
+                    const nc = col + dc;
+                    const nr = row + dr;
+                    if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+                        grid.delete(getHexKey(nc, nr));
+                    }
+                }
+            }
+        }
+
+        function generateMap(type) {
+            const generator = mapGenerators[type];
+            if (generator) {
+                generator();
+                updateGoButton();
+                draw();
+            }
         }
 
         function getNeighbors(col, row) {
@@ -572,6 +1018,12 @@
             if (startHex && endHex) {
                 runPathfinding();
             }
+        });
+
+        // Generate button
+        document.getElementById('generate-btn').addEventListener('click', () => {
+            const mapType = document.getElementById('map-select').value;
+            generateMap(mapType);
         });
 
         // Heuristic for A* and Greedy (hex distance)
