@@ -222,15 +222,15 @@
         };
 
         // Pathfinding visualization colors
-        const PATH_COLOR = { fill: '#f39c12', stroke: '#e67e22' };
+        const PATH_COLOR = { fill: '#ff08e8', stroke: '#cc06b9' };
 
         // Get visited cell color based on visit order (cycles through hues)
         function getVisitedColor(visitOrder) {
             // Cycle through hues over ~200 steps, then repeat
             const hue = (visitOrder * 2.5) % 360;
-            // Low saturation for subtle effect, moderate lightness
-            const fill = `hsl(${hue}, 25%, 28%)`;
-            const stroke = `hsl(${hue}, 30%, 38%)`;
+            // OKLCH gives perceptually uniform colors across the hue spectrum
+            const fill = `oklch(45% 0.07 ${hue})`;
+            const stroke = `oklch(55% 0.09 ${hue})`;
             return { fill, stroke };
         }
 
