@@ -123,7 +123,7 @@
             border: 5px solid transparent;
             border-bottom-color: rgba(0, 0, 0, 0.85);
         }
-        #algorithm-select, #map-select {
+        #algorithm-select, #map-select, #speed-select {
             padding: 8px 12px;
             border: 1px solid #4a4a6a;
             border-radius: 6px;
@@ -134,10 +134,10 @@
             cursor: pointer;
             outline: none;
         }
-        #algorithm-select:hover, #map-select:hover {
+        #algorithm-select:hover, #map-select:hover, #speed-select:hover {
             background: #3a3a5a;
         }
-        #algorithm-select:focus, #map-select:focus {
+        #algorithm-select:focus, #map-select:focus, #speed-select:focus {
             border-color: #7a7aaa;
         }
         #generate-btn {
@@ -192,6 +192,12 @@
             <option value="dfs">Depth First Search</option>
             <option value="astar">A*</option>
             <option value="greedy">Greedy Best-First</option>
+        </select>
+        <select id="speed-select">
+            <option value="slow">Slow</option>
+            <option value="normal" selected>Normal</option>
+            <option value="fast">Fast</option>
+            <option value="instant">Instant</option>
         </select>
         <div id="go-btn-wrapper">
             <button id="go-btn" disabled>Go!</button>

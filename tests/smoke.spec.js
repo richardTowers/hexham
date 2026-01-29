@@ -17,7 +17,7 @@ test.describe('Hexham Pathfinding Visualizer', () => {
       consoleErrors.push(err.message);
     });
 
-    await page.goto('/');
+    await page.goto('/?speed=instant');
   });
 
   test.afterEach(async () => {

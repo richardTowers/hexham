@@ -1,9 +1,53 @@
 import { getHexKey, getHexType, visitedHexes, pathHexes, clearPathfinding, getStartHex, getEndHex, setIsSearching, setMaxVisitOrder } from './grid.js';
 import { getNeighbors, heuristic } from './hex-utils.js';
 
-/** @param {number} ms */
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+// Speed presets: { stepsPerFrame, targetFps }
+const SPEED_PRESETS = {
+    slow: { stepsPerFrame: 5, targetFps: 30 },
+    normal: { stepsPerFrame: 20, targetFps: 60 },
+    fast: { stepsPerFrame: 100, targetFps: 60 },
+    instant: { stepsPerFrame: Infinity, targetFps: 0 }
+};
+
+/**
+ * Get current speed settings from UI or URL param override
+ * @returns {{ stepsPerFrame: number, frameTime: number }}
+ */
+function getSpeedSettings() {
+    // URL param takes precedence (for tests)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlSpeed = urlParams.get('speed');
+
+    // Otherwise read from UI
+    const speedSelect = document.getElementById('speed-select');
+    const speed = urlSpeed || (speedSelect ? speedSelect.value : 'normal');
+
+    const preset = SPEED_PRESETS[speed] || SPEED_PRESETS.normal;
+    const frameTime = preset.targetFps > 0 ? 1000 / preset.targetFps : 0;
+
+    return { stepsPerFrame: preset.stepsPerFrame, frameTime };
+}
+
+/**
+ * Wait for next animation frame, respecting target FPS
+ * @param {number} lastFrameTime
+ * @param {number} frameTime - minimum ms between frames (0 = no limit)
+ * @returns {Promise<number>} timestamp of this frame
+ */
+function nextFrame(lastFrameTime, frameTime) {
+    return new Promise(resolve => {
+        requestAnimationFrame(timestamp => {
+            if (frameTime > 0) {
+                const elapsed = timestamp - lastFrameTime;
+                if (elapsed < frameTime) {
+                    // If we're ahead of schedule, wait a bit
+                    setTimeout(() => resolve(timestamp), frameTime - elapsed);
+                    return;
+                }
+            }
+            resolve(timestamp);
+        });
+    });
 }
 
 /**
@@ -32,6 +76,24 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
 
     let found = false;
     let stepCount = 0;
+    let stepsThisFrame = 0;
+    let lastFrameTime = performance.now();
+
+    // Get speed settings at start of run
+    const { stepsPerFrame, frameTime } = getSpeedSettings();
+
+    /**
+     * Check if we should yield to render a frame
+     * @returns {Promise<void>}
+     */
+    async function maybeYield() {
+        stepsThisFrame++;
+        if (stepsThisFrame >= stepsPerFrame) {
+            draw();
+            lastFrameTime = await nextFrame(lastFrameTime, frameTime);
+            stepsThisFrame = 0;
+        }
+    }
 
     if (algorithm === 'bfs') {
         // Breadth-First Search
@@ -45,10 +107,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             visitedHexes.set(currentKey, stepCount);
             setMaxVisitOrder(stepCount);
             stepCount++;
-            if (stepCount % 10 === 0) {
-                draw();
-                await sleep(5);
-            }
+            await maybeYield();
 
             if (currentKey === endKey) {
                 found = true;
@@ -81,10 +140,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            if (stepCount % 10 === 0) {
-                draw();
-                await sleep(5);
-            }
+            await maybeYield();
 
             if (currentKey === endKey) {
                 found = true;
@@ -130,10 +186,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            if (stepCount % 10 === 0) {
-                draw();
-                await sleep(5);
-            }
+            await maybeYield();
 
             if (currentKey === endKey) {
                 found = true;
@@ -182,10 +235,7 @@ export async function runPathfinding(algorithm, draw, updateGoButton) {
             setMaxVisitOrder(stepCount);
 
             stepCount++;
-            if (stepCount % 10 === 0) {
-                draw();
-                await sleep(5);
-            }
+            await maybeYield();
 
             if (currentKey === endKey) {
                 found = true;
