@@ -159,21 +159,21 @@
 </head>
 <body>
     <div id="toolbar">
-        <button class="tile-btn active" data-type="standard">
-            <span class="tile-swatch" style="background: #2a2a4a;"></span>
-            Standard
-        </button>
-        <button class="tile-btn" data-type="wall">
-            <span class="tile-swatch" style="background: #1a1a1a;"></span>
-            Wall
-        </button>
-        <button class="tile-btn" data-type="start">
+        <button class="tile-btn active" data-type="start">
             <span class="tile-swatch" style="background: #2ecc71;"></span>
             Start
         </button>
         <button class="tile-btn" data-type="end">
             <span class="tile-swatch" style="background: #e74c3c;"></span>
             End
+        </button>
+        <button class="tile-btn" data-type="wall">
+            <span class="tile-swatch" style="background: #1a1a1a;"></span>
+            Wall
+        </button>
+        <button class="tile-btn" data-type="standard">
+            <span class="tile-swatch" style="background: #2a2a4a;"></span>
+            Standard
         </button>
         <div class="separator"></div>
         <select id="map-select">
@@ -710,7 +710,7 @@
         let panStartY = 0;
         let mouseDownPos = null;
         let hoveredHex = null;
-        let selectedTileType = 'standard';
+        let selectedTileType = 'start';
 
         function resizeCanvas() {
             const rect = canvas.getBoundingClientRect();
