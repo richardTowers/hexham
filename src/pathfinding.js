@@ -29,8 +29,8 @@ function getSpeedSettings() {
     const urlSpeed = urlParams.get('speed');
 
     // Otherwise read from UI
-    const speedSelect = document.getElementById('speed-select');
-    const speed = urlSpeed || (speedSelect ? speedSelect.value : 'normal');
+    const speedSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('speed-select'));
+    const speed = /** @type {keyof typeof SPEED_PRESETS} */ (urlSpeed || (speedSelect ? speedSelect.value : 'normal'));
 
     const preset = SPEED_PRESETS[speed] || SPEED_PRESETS.normal;
     const frameTime = preset.targetFps > 0 ? 1000 / preset.targetFps : 0;
