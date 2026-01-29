@@ -9,5 +9,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["main.js"]
+  "include": ["src/main.js"]
 }
