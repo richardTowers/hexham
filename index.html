@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hexagonal Grid</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a2e;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #888;
+            font-family: monospace;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #toolbar {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 8px;
+            background: rgba(30, 30, 50, 0.9);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #4a4a6a;
+        }
+        .tile-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            background: #2a2a4a;
+            color: #ccc;
+            font-family: monospace;
+            font-size: 13px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .tile-btn:hover {
+            background: #3a3a5a;
+        }
+        .tile-btn.active {
+            border-color: #7a7aaa;
+            background: #3a3a5a;
+        }
+        .tile-swatch {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .separator {
+            width: 1px;
+            background: #4a4a6a;
+            margin: 0 4px;
+        }
+        #go-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            background: #3498db;
+            color: #fff;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+            position: relative;
+        }
+        #go-btn:hover:not(:disabled) {
+            background: #2980b9;
+        }
+        #go-btn:disabled {
+            background: #4a4a6a;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        #go-btn-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        #go-btn-tooltip {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #ccc;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        #go-btn-wrapper:hover #go-btn-tooltip {
+            opacity: 1;
+        }
+        #go-btn-tooltip::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-bottom-color: rgba(0, 0, 0, 0.85);
+        }
+        #algorithm-select {
+            padding: 8px 12px;
+            border: 1px solid #4a4a6a;
+            border-radius: 6px;
+            background: #2a2a4a;
+            color: #ccc;
+            font-family: monospace;
+            font-size: 13px;
+            cursor: pointer;
+            outline: none;
+        }
+        #algorithm-select:hover {
+            background: #3a3a5a;
+        }
+        #algorithm-select:focus {
+            border-color: #7a7aaa;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="toolbar">
+        <button class="tile-btn active" data-type="standard">
+            <span class="tile-swatch" style="background: #2a2a4a;"></span>
+            Standard
+        </button>
+        <button class="tile-btn" data-type="wall">
+            <span class="tile-swatch" style="background: #1a1a1a;"></span>
+            Wall
+        </button>
+        <button class="tile-btn" data-type="start">
+            <span class="tile-swatch" style="background: #2ecc71;"></span>
+            Start
+        </button>
+        <button class="tile-btn" data-type="end">
+            <span class="tile-swatch" style="background: #e74c3c;"></span>
+            End
+        </button>
+        <div class="separator"></div>
+        <select id="algorithm-select">
+            <option value="bfs">BFS</option>
+            <option value="dfs">DFS</option>
+            <option value="dijkstra">Dijkstra</option>
+            <option value="astar">A*</option>
+            <option value="greedy">Greedy Best-First</option>
+        </select>
+        <div id="go-btn-wrapper">
+            <button id="go-btn" disabled>Go!</button>
+            <div id="go-btn-tooltip">Set a start and end point first</div>
+        </div>
+    </div>
+    <div id="controls">Drag to pan | Scroll to zoom | R to reset | 1-4 to select tile type</div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Grid configuration
+        const GRID_WIDTH = 100;
+        const GRID_HEIGHT = 100;
+        const HEX_SIZE = 12;
+
+        // Hexagon geometry (pointy-topped)
+        const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
+        const HEX_HEIGHT = 2 * HEX_SIZE;
+        const HORIZ_SPACING = HEX_WIDTH;
+        const VERT_SPACING = HEX_HEIGHT * 0.75;
+
+        // Tile types and colors
+        const TILE_TYPES = {
+            standard: { fill: '#2a2a4a', stroke: '#4a4a6a' },
+            wall:     { fill: '#1a1a1a', stroke: '#333' },
+            start:    { fill: '#2ecc71', stroke: '#27ae60' },
+            end:      { fill: '#e74c3c', stroke: '#c0392b' }
+        };
+
+        // Pathfinding visualization colors
+        const VISITED_COLOR = { fill: '#3d3d5c', stroke: '#5a5a7a' };
+        const PATH_COLOR = { fill: '#f39c12', stroke: '#e67e22' };
+
+        // Grid state - Map with "col,row" keys
+        const grid = new Map();
+        let startHex = null;
+        let endHex = null;
+
+        // Pathfinding state
+        const visitedHexes = new Set();
+        const pathHexes = new Set();
+        let isSearching = false;
+
+        function getHexKey(col, row) {
+            return `${col},${row}`;
+        }
+
+        function getHexType(col, row) {
+            return grid.get(getHexKey(col, row)) || 'standard';
+        }
+
+        function setHexType(col, row, type) {
+            const key = getHexKey(col, row);
+
+            // Handle unique start/end nodes
+            if (type === 'start') {
+                if (startHex) {
+                    grid.delete(getHexKey(startHex.col, startHex.row));
+                }
+                startHex = { col, row };
+            } else if (type === 'end') {
+                if (endHex) {
+                    grid.delete(getHexKey(endHex.col, endHex.row));
+                }
+                endHex = { col, row };
+            }
+
+            // Clear start/end reference if overwriting
+            if (startHex && startHex.col === col && startHex.row === row && type !== 'start') {
+                startHex = null;
+            }
+            if (endHex && endHex.col === col && endHex.row === row && type !== 'end') {
+                endHex = null;
+            }
+
+            if (type === 'standard') {
+                grid.delete(key);
+            } else {
+                grid.set(key, type);
+            }
+
+            updateGoButton();
+            clearPathfinding();
+        }
+
+        function clearPathfinding() {
+            visitedHexes.clear();
+            pathHexes.clear();
+            isSearching = false;
+        }
+
+        function getNeighbors(col, row) {
+            // Offset coordinates for pointy-topped hex grid (odd-r)
+            const evenRowOffsets = [
+                [+1, 0], [0, -1], [-1, -1],
+                [-1, 0], [-1, +1], [0, +1]
+            ];
+            const oddRowOffsets = [
+                [+1, 0], [+1, -1], [0, -1],
+                [-1, 0], [0, +1], [+1, +1]
+            ];
+
+            const offsets = (row % 2 === 0) ? evenRowOffsets : oddRowOffsets;
+            const neighbors = [];
+
+            for (const [dc, dr] of offsets) {
+                const nc = col + dc;
+                const nr = row + dr;
+                if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+                    neighbors.push({ col: nc, row: nr });
+                }
+            }
+
+            return neighbors;
+        }
+
+        function updateGoButton() {
+            const goBtn = document.getElementById('go-btn');
+            const tooltip = document.getElementById('go-btn-tooltip');
+
+            const hasStart = startHex !== null;
+            const hasEnd = endHex !== null;
+            const canGo = hasStart && hasEnd && !isSearching;
+
+            goBtn.disabled = !canGo;
+
+            if (isSearching) {
+                tooltip.textContent = 'Searching...';
+            } else if (canGo) {
+                tooltip.textContent = 'Find path from start to end';
+            } else if (!hasStart && !hasEnd) {
+                tooltip.textContent = 'Set a start and end point first';
+            } else if (!hasStart) {
+                tooltip.textContent = 'Set a start point first';
+            } else {
+                tooltip.textContent = 'Set an end point first';
+            }
+        }
+
+        // View transform state
+        let offsetX = 0;
+        let offsetY = 0;
+        let scale = 1;
+        const MIN_SCALE = 0.1;
+        const MAX_SCALE = 5;
+
+        // Interaction state
+        let isPanning = false;
+        let panStartX = 0;
+        let panStartY = 0;
+        let mouseDownPos = null;
+        let hoveredHex = null;
+        let selectedTileType = 'standard';
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        }
+
+        function drawHexagon(cx, cy, size) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - Math.PI / 6;
+                const x = cx + size * Math.cos(angle);
+                const y = cy + size * Math.sin(angle);
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+        }
+
+        function hexToPixel(col, row) {
+            const x = HEX_WIDTH / 2 + col * HORIZ_SPACING + (row % 2) * (HORIZ_SPACING / 2);
+            const y = HEX_SIZE + row * VERT_SPACING;
+            return { x, y };
+        }
+
+        function pixelToHex(px, py) {
+            // Convert screen coords to world coords
+            const worldX = (px - offsetX) / scale;
+            const worldY = (py - offsetY) / scale;
+
+            // Approximate row
+            const approxRow = Math.round((worldY - HEX_SIZE) / VERT_SPACING);
+
+            // Check nearby rows for the closest hex
+            let closest = null;
+            let closestDist = Infinity;
+
+            for (let row = approxRow - 1; row <= approxRow + 1; row++) {
+                if (row < 0 || row >= GRID_HEIGHT) continue;
+
+                const rowOffset = (row % 2) * (HORIZ_SPACING / 2);
+                const approxCol = Math.round((worldX - HEX_WIDTH / 2 - rowOffset) / HORIZ_SPACING);
+
+                for (let col = approxCol - 1; col <= approxCol + 1; col++) {
+                    if (col < 0 || col >= GRID_WIDTH) continue;
+
+                    const { x, y } = hexToPixel(col, row);
+                    const dist = Math.hypot(worldX - x, worldY - y);
+
+                    if (dist < closestDist && dist < HEX_SIZE) {
+                        closestDist = dist;
+                        closest = { col, row };
+                    }
+                }
+            }
+
+            return closest;
+        }
+
+        function getVisibleRange() {
+            const invScale = 1 / scale;
+            const left = -offsetX * invScale;
+            const top = -offsetY * invScale;
+            const right = left + canvas.width * invScale;
+            const bottom = top + canvas.height * invScale;
+
+            const minCol = Math.max(0, Math.floor(left / HORIZ_SPACING) - 1);
+            const maxCol = Math.min(GRID_WIDTH - 1, Math.ceil(right / HORIZ_SPACING) + 1);
+            const minRow = Math.max(0, Math.floor(top / VERT_SPACING) - 1);
+            const maxRow = Math.min(GRID_HEIGHT - 1, Math.ceil(bottom / VERT_SPACING) + 1);
+
+            return { minCol, maxCol, minRow, maxRow };
+        }
+
+        function draw() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            const { minCol, maxCol, minRow, maxRow } = getVisibleRange();
+
+            for (let row = minRow; row <= maxRow; row++) {
+                for (let col = minCol; col <= maxCol; col++) {
+                    const { x, y } = hexToPixel(col, row);
+                    const type = getHexType(col, row);
+                    const key = getHexKey(col, row);
+                    const isHovered = hoveredHex && hoveredHex.col === col && hoveredHex.row === row;
+                    const isPath = pathHexes.has(key);
+                    const isVisited = visitedHexes.has(key);
+
+                    // Determine colors based on state
+                    let colors;
+                    if (isPath && type !== 'start' && type !== 'end') {
+                        colors = PATH_COLOR;
+                    } else if (isVisited && type === 'standard') {
+                        colors = VISITED_COLOR;
+                    } else {
+                        colors = TILE_TYPES[type];
+                    }
+
+                    drawHexagon(x, y, HEX_SIZE);
+
+                    // Fill
+                    if (isHovered) {
+                        ctx.fillStyle = lightenColor(colors.fill, 30);
+                    } else {
+                        ctx.fillStyle = colors.fill;
+                    }
+                    ctx.fill();
+
+                    // Stroke
+                    ctx.strokeStyle = isHovered ? '#fff' : colors.stroke;
+                    ctx.lineWidth = (isHovered ? 2 : 1) / scale;
+                    ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function lightenColor(hex, amount) {
+            const num = parseInt(hex.slice(1), 16);
+            const r = Math.min(255, (num >> 16) + amount);
+            const g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
+            const b = Math.min(255, (num & 0x0000FF) + amount);
+            return `rgb(${r},${g},${b})`;
+        }
+
+        // Mouse handlers
+        canvas.addEventListener('mousedown', (e) => {
+            isPanning = true;
+            panStartX = e.clientX - offsetX;
+            panStartY = e.clientY - offsetY;
+            mouseDownPos = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            // Update hover
+            const newHovered = pixelToHex(e.clientX, e.clientY);
+            const hoverChanged = (!hoveredHex && newHovered) ||
+                                 (hoveredHex && !newHovered) ||
+                                 (hoveredHex && newHovered && (hoveredHex.col !== newHovered.col || hoveredHex.row !== newHovered.row));
+
+            if (hoverChanged) {
+                hoveredHex = newHovered;
+                if (!isPanning) draw();
+            }
+
+            // Pan
+            if (isPanning) {
+                offsetX = e.clientX - panStartX;
+                offsetY = e.clientY - panStartY;
+                hoveredHex = pixelToHex(e.clientX, e.clientY);
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (mouseDownPos) {
+                const dist = Math.hypot(e.clientX - mouseDownPos.x, e.clientY - mouseDownPos.y);
+                // Only register click if mouse didn't move much (not a pan)
+                if (dist < 5) {
+                    const hex = pixelToHex(e.clientX, e.clientY);
+                    if (hex) {
+                        setHexType(hex.col, hex.row, selectedTileType);
+                        draw();
+                    }
+                }
+            }
+            isPanning = false;
+            mouseDownPos = null;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isPanning = false;
+            mouseDownPos = null;
+            hoveredHex = null;
+            draw();
+        });
+
+        // Zoom handler (zoom toward mouse position)
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+            const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * zoomFactor));
+
+            // Zoom toward mouse position
+            const mouseX = e.clientX;
+            const mouseY = e.clientY;
+            const scaleChange = newScale / scale;
+
+            offsetX = mouseX - (mouseX - offsetX) * scaleChange;
+            offsetY = mouseY - (mouseY - offsetY) * scaleChange;
+            scale = newScale;
+
+            draw();
+        }, { passive: false });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                offsetX = 0;
+                offsetY = 0;
+                scale = 1;
+                draw();
+            }
+            // Number keys for tile selection
+            const typeMap = { '1': 'standard', '2': 'wall', '3': 'start', '4': 'end' };
+            if (typeMap[e.key]) {
+                selectedTileType = typeMap[e.key];
+                tileButtons.forEach(b => {
+                    b.classList.toggle('active', b.dataset.type === selectedTileType);
+                });
+            }
+        });
+
+        // Toolbar handling
+        const tileButtons = document.querySelectorAll('.tile-btn');
+        tileButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tileButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                selectedTileType = btn.dataset.type;
+            });
+        });
+
+        // Go button
+        document.getElementById('go-btn').addEventListener('click', () => {
+            if (startHex && endHex) {
+                runPathfinding();
+            }
+        });
+
+        // Heuristic for A* and Greedy (hex distance)
+        function heuristic(col1, row1, col2, row2) {
+            // Convert offset to cube coordinates for accurate hex distance
+            const x1 = col1 - (row1 - (row1 & 1)) / 2;
+            const z1 = row1;
+            const y1 = -x1 - z1;
+
+            const x2 = col2 - (row2 - (row2 & 1)) / 2;
+            const z2 = row2;
+            const y2 = -x2 - z2;
+
+            return (Math.abs(x1 - x2) + Math.abs(y1 - y2) + Math.abs(z1 - z2)) / 2;
+        }
+
+        async function runPathfinding() {
+            if (isSearching) return;
+
+            // Clear previous results
+            clearPathfinding();
+            isSearching = true;
+            updateGoButton();
+            draw();
+
+            const algorithm = document.getElementById('algorithm-select').value;
+            const startKey = getHexKey(startHex.col, startHex.row);
+            const endKey = getHexKey(endHex.col, endHex.row);
+
+            const cameFrom = new Map();
+            cameFrom.set(startKey, null);
+
+            let found = false;
+            let stepCount = 0;
+
+            if (algorithm === 'bfs') {
+                // Breadth-First Search
+                const queue = [{ col: startHex.col, row: startHex.row }];
+
+                while (queue.length > 0 && !found) {
+                    const current = queue.shift();
+                    const currentKey = getHexKey(current.col, current.row);
+
+                    visitedHexes.add(currentKey);
+                    stepCount++;
+                    if (stepCount % 10 === 0) {
+                        draw();
+                        await sleep(5);
+                    }
+
+                    if (currentKey === endKey) {
+                        found = true;
+                        break;
+                    }
+
+                    for (const neighbor of getNeighbors(current.col, current.row)) {
+                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                        const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                        if (cameFrom.has(neighborKey)) continue;
+                        if (neighborType === 'wall') continue;
+
+                        cameFrom.set(neighborKey, currentKey);
+                        queue.push(neighbor);
+                    }
+                }
+
+            } else if (algorithm === 'dfs') {
+                // Depth-First Search
+                const stack = [{ col: startHex.col, row: startHex.row }];
+
+                while (stack.length > 0 && !found) {
+                    const current = stack.pop();
+                    const currentKey = getHexKey(current.col, current.row);
+
+                    if (visitedHexes.has(currentKey)) continue;
+                    visitedHexes.add(currentKey);
+
+                    stepCount++;
+                    if (stepCount % 10 === 0) {
+                        draw();
+                        await sleep(5);
+                    }
+
+                    if (currentKey === endKey) {
+                        found = true;
+                        break;
+                    }
+
+                    for (const neighbor of getNeighbors(current.col, current.row)) {
+                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                        const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                        if (visitedHexes.has(neighborKey)) continue;
+                        if (neighborType === 'wall') continue;
+
+                        if (!cameFrom.has(neighborKey)) {
+                            cameFrom.set(neighborKey, currentKey);
+                        }
+                        stack.push(neighbor);
+                    }
+                }
+
+            } else if (algorithm === 'dijkstra') {
+                // Dijkstra's Algorithm (all edges weight 1)
+                const dist = new Map();
+                dist.set(startKey, 0);
+
+                // Simple priority queue using array
+                const pq = [{ col: startHex.col, row: startHex.row, d: 0 }];
+
+                while (pq.length > 0 && !found) {
+                    pq.sort((a, b) => a.d - b.d);
+                    const current = pq.shift();
+                    const currentKey = getHexKey(current.col, current.row);
+
+                    if (visitedHexes.has(currentKey)) continue;
+                    visitedHexes.add(currentKey);
+
+                    stepCount++;
+                    if (stepCount % 10 === 0) {
+                        draw();
+                        await sleep(5);
+                    }
+
+                    if (currentKey === endKey) {
+                        found = true;
+                        break;
+                    }
+
+                    const currentDist = dist.get(currentKey);
+
+                    for (const neighbor of getNeighbors(current.col, current.row)) {
+                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                        const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                        if (visitedHexes.has(neighborKey)) continue;
+                        if (neighborType === 'wall') continue;
+
+                        const newDist = currentDist + 1;
+                        if (!dist.has(neighborKey) || newDist < dist.get(neighborKey)) {
+                            dist.set(neighborKey, newDist);
+                            cameFrom.set(neighborKey, currentKey);
+                            pq.push({ col: neighbor.col, row: neighbor.row, d: newDist });
+                        }
+                    }
+                }
+
+            } else if (algorithm === 'astar') {
+                // A* Search
+                const gScore = new Map();
+                const fScore = new Map();
+                gScore.set(startKey, 0);
+                fScore.set(startKey, heuristic(startHex.col, startHex.row, endHex.col, endHex.row));
+
+                const openSet = [{ col: startHex.col, row: startHex.row }];
+
+                while (openSet.length > 0 && !found) {
+                    openSet.sort((a, b) => {
+                        const fA = fScore.get(getHexKey(a.col, a.row)) || Infinity;
+                        const fB = fScore.get(getHexKey(b.col, b.row)) || Infinity;
+                        return fA - fB;
+                    });
+
+                    const current = openSet.shift();
+                    const currentKey = getHexKey(current.col, current.row);
+
+                    if (visitedHexes.has(currentKey)) continue;
+                    visitedHexes.add(currentKey);
+
+                    stepCount++;
+                    if (stepCount % 10 === 0) {
+                        draw();
+                        await sleep(5);
+                    }
+
+                    if (currentKey === endKey) {
+                        found = true;
+                        break;
+                    }
+
+                    const currentG = gScore.get(currentKey);
+
+                    for (const neighbor of getNeighbors(current.col, current.row)) {
+                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                        const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                        if (visitedHexes.has(neighborKey)) continue;
+                        if (neighborType === 'wall') continue;
+
+                        const tentativeG = currentG + 1;
+
+                        if (!gScore.has(neighborKey) || tentativeG < gScore.get(neighborKey)) {
+                            cameFrom.set(neighborKey, currentKey);
+                            gScore.set(neighborKey, tentativeG);
+                            fScore.set(neighborKey, tentativeG + heuristic(neighbor.col, neighbor.row, endHex.col, endHex.row));
+                            openSet.push(neighbor);
+                        }
+                    }
+                }
+
+            } else if (algorithm === 'greedy') {
+                // Greedy Best-First Search
+                const openSet = [{ col: startHex.col, row: startHex.row }];
+
+                while (openSet.length > 0 && !found) {
+                    openSet.sort((a, b) => {
+                        const hA = heuristic(a.col, a.row, endHex.col, endHex.row);
+                        const hB = heuristic(b.col, b.row, endHex.col, endHex.row);
+                        return hA - hB;
+                    });
+
+                    const current = openSet.shift();
+                    const currentKey = getHexKey(current.col, current.row);
+
+                    if (visitedHexes.has(currentKey)) continue;
+                    visitedHexes.add(currentKey);
+
+                    stepCount++;
+                    if (stepCount % 10 === 0) {
+                        draw();
+                        await sleep(5);
+                    }
+
+                    if (currentKey === endKey) {
+                        found = true;
+                        break;
+                    }
+
+                    for (const neighbor of getNeighbors(current.col, current.row)) {
+                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
+                        const neighborType = getHexType(neighbor.col, neighbor.row);
+
+                        if (visitedHexes.has(neighborKey)) continue;
+                        if (neighborType === 'wall') continue;
+
+                        if (!cameFrom.has(neighborKey)) {
+                            cameFrom.set(neighborKey, currentKey);
+                            openSet.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            // Reconstruct path if found
+            if (found) {
+                let currentKey = endKey;
+                while (currentKey !== null) {
+                    pathHexes.add(currentKey);
+                    currentKey = cameFrom.get(currentKey);
+                }
+            }
+
+            isSearching = false;
+            updateGoButton();
+            draw();
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+    </script>
+</body>
+</html>
