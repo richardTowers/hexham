@@ -180,9 +180,7 @@
         <select id="map-select">
             <option value="maze">Maze</option>
             <option value="scatter">Scattered</option>
-            <option value="spiral">Spiral</option>
             <option value="rooms">Rooms</option>
-            <option value="wave">Wave</option>
         </select>
         <button id="generate-btn">Generate</button>
         <div class="separator"></div>
@@ -306,9 +304,7 @@
         const mapGenerators = {
             maze: generateMaze,
             scatter: generateScattered,
-            spiral: generateSpiral,
-            rooms: generateRooms,
-            wave: generateWave
+            rooms: generateRooms
         };
 
         // Check if path exists between two points (BFS)
@@ -544,44 +540,6 @@
             ensurePathExists();
         }
 
-        function generateSpiral() {
-            clearGrid();
-
-            const centerX = GRID_WIDTH / 2;
-            const centerY = GRID_HEIGHT / 2;
-
-            // Create spiral walls
-            for (let row = 0; row < GRID_HEIGHT; row++) {
-                for (let col = 0; col < GRID_WIDTH; col++) {
-                    const { x, y } = hexToPixel(col, row);
-                    const dx = x - hexToPixel(Math.floor(centerX), Math.floor(centerY)).x;
-                    const dy = y - hexToPixel(Math.floor(centerX), Math.floor(centerY)).y;
-
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    const angle = Math.atan2(dy, dx);
-
-                    // Spiral formula
-                    const spiralPhase = (dist / 25 + angle / Math.PI) % 2;
-
-                    if (spiralPhase > 0.3 && spiralPhase < 0.7 && dist > 30 && dist < 400) {
-                        grid.set(getHexKey(col, row), 'wall');
-                    }
-                }
-            }
-
-            // Place start at center, end at edge
-            startHex = { col: Math.floor(centerX), row: Math.floor(centerY) };
-            endHex = { col: GRID_WIDTH - 5, row: Math.floor(GRID_HEIGHT / 2) };
-
-            clearAreaAround(startHex.col, startHex.row, 2);
-            clearAreaAround(endHex.col, endHex.row, 2);
-
-            grid.set(getHexKey(startHex.col, startHex.row), 'start');
-            grid.set(getHexKey(endHex.col, endHex.row), 'end');
-
-            ensurePathExists();
-        }
-
         function generateRooms() {
             clearGrid();
 
@@ -641,55 +599,6 @@
             const lastRoom = rooms[rooms.length - 1];
             startHex = { col: Math.floor(firstRoom.x + firstRoom.w / 2), row: Math.floor(firstRoom.y + firstRoom.h / 2) };
             endHex = { col: Math.floor(lastRoom.x + lastRoom.w / 2), row: Math.floor(lastRoom.y + lastRoom.h / 2) };
-
-            grid.set(getHexKey(startHex.col, startHex.row), 'start');
-            grid.set(getHexKey(endHex.col, endHex.row), 'end');
-
-            ensurePathExists();
-        }
-
-        function generateWave() {
-            clearGrid();
-
-            // Create wave-like barriers
-            for (let row = 0; row < GRID_HEIGHT; row++) {
-                for (let col = 0; col < GRID_WIDTH; col++) {
-                    const { x, y } = hexToPixel(col, row);
-
-                    // Multiple sine waves
-                    const wave1 = Math.sin(y / 15) * 20;
-                    const wave2 = Math.sin(y / 25 + 2) * 15;
-                    const wave3 = Math.sin(y / 10 + 4) * 10;
-
-                    // Create vertical barriers that follow waves
-                    const barrier1 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH / 4 + wave1));
-                    const barrier2 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH / 2 + wave2));
-                    const barrier3 = Math.abs(x - (GRID_WIDTH * HEX_WIDTH * 3 / 4 + wave3));
-
-                    if (barrier1 < 8 || barrier2 < 8 || barrier3 < 8) {
-                        grid.set(getHexKey(col, row), 'wall');
-                    }
-                }
-            }
-
-            // Create gaps in the waves
-            for (let i = 0; i < 15; i++) {
-                const gapRow = 5 + Math.floor(Math.random() * (GRID_HEIGHT - 10));
-                for (let col = 0; col < GRID_WIDTH; col++) {
-                    for (let r = gapRow - 2; r <= gapRow + 2; r++) {
-                        if (r >= 0 && r < GRID_HEIGHT) {
-                            grid.delete(getHexKey(col, r));
-                        }
-                    }
-                }
-            }
-
-            // Place start and end on opposite sides
-            startHex = { col: 3, row: Math.floor(GRID_HEIGHT / 2) };
-            endHex = { col: GRID_WIDTH - 4, row: Math.floor(GRID_HEIGHT / 2) };
-
-            clearAreaAround(startHex.col, startHex.row, 2);
-            clearAreaAround(endHex.col, endHex.row, 2);
 
             grid.set(getHexKey(startHex.col, startHex.row), 'start');
             grid.set(getHexKey(endHex.col, endHex.row), 'end');
