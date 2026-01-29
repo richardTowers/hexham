@@ -190,7 +190,6 @@
         <select id="algorithm-select">
             <option value="bfs">BFS</option>
             <option value="dfs">DFS</option>
-            <option value="dijkstra">Dijkstra</option>
             <option value="astar">A*</option>
             <option value="greedy">Greedy Best-First</option>
         </select>
@@ -1173,52 +1172,6 @@
                             cameFrom.set(neighborKey, currentKey);
                         }
                         stack.push(neighbor);
-                    }
-                }
-
-            } else if (algorithm === 'dijkstra') {
-                // Dijkstra's Algorithm (all edges weight 1)
-                const dist = new Map();
-                dist.set(startKey, 0);
-
-                // Simple priority queue using array
-                const pq = [{ col: startHex.col, row: startHex.row, d: 0 }];
-
-                while (pq.length > 0 && !found) {
-                    pq.sort((a, b) => a.d - b.d);
-                    const current = pq.shift();
-                    const currentKey = getHexKey(current.col, current.row);
-
-                    if (visitedHexes.has(currentKey)) continue;
-                    visitedHexes.set(currentKey, stepCount);
-                    maxVisitOrder = stepCount;
-
-                    stepCount++;
-                    if (stepCount % 10 === 0) {
-                        draw();
-                        await sleep(5);
-                    }
-
-                    if (currentKey === endKey) {
-                        found = true;
-                        break;
-                    }
-
-                    const currentDist = dist.get(currentKey);
-
-                    for (const neighbor of getNeighbors(current.col, current.row)) {
-                        const neighborKey = getHexKey(neighbor.col, neighbor.row);
-                        const neighborType = getHexType(neighbor.col, neighbor.row);
-
-                        if (visitedHexes.has(neighborKey)) continue;
-                        if (neighborType === 'wall') continue;
-
-                        const newDist = currentDist + 1;
-                        if (!dist.has(neighborKey) || newDist < dist.get(neighborKey)) {
-                            dist.set(neighborKey, newDist);
-                            cameFrom.set(neighborKey, currentKey);
-                            pq.push({ col: neighbor.col, row: neighbor.row, d: newDist });
-                        }
                     }
                 }
 
