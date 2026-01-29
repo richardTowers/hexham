@@ -682,6 +682,28 @@
         const MIN_SCALE = 0.1;
         const MAX_SCALE = 5;
 
+        function fitGridToView() {
+            // Calculate total grid world-space dimensions
+            const gridWorldWidth = HEX_WIDTH + GRID_WIDTH * HORIZ_SPACING;
+            const gridWorldHeight = HEX_SIZE * 2 + GRID_HEIGHT * VERT_SPACING;
+
+            // Calculate scale to fit grid in viewport with some padding
+            const padding = 20;
+            const availableWidth = canvas.width - padding * 2;
+            const availableHeight = canvas.height - padding * 2;
+
+            const scaleX = availableWidth / gridWorldWidth;
+            const scaleY = availableHeight / gridWorldHeight;
+            scale = Math.min(scaleX, scaleY, MAX_SCALE);
+            scale = Math.max(scale, MIN_SCALE);
+
+            // Center the grid
+            const scaledWidth = gridWorldWidth * scale;
+            const scaledHeight = gridWorldHeight * scale;
+            offsetX = (canvas.width - scaledWidth) / 2;
+            offsetY = (canvas.height - scaledHeight) / 2;
+        }
+
         // Interaction state
         let isPanning = false;
         let panStartX = 0;
@@ -897,9 +919,7 @@
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'r' || e.key === 'R') {
-                offsetX = 0;
-                offsetY = 0;
-                scale = 1;
+                fitGridToView();
                 draw();
             }
             // Number keys for tile selection
@@ -1201,7 +1221,10 @@
         }
 
         window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        fitGridToView();
+        draw();
     </script>
 </body>
 </html>
