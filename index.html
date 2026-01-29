@@ -177,6 +177,7 @@
         </button>
         <div class="separator"></div>
         <select id="map-select">
+            <option value="empty">Empty</option>
             <option value="maze">Maze</option>
             <option value="scatter">Scattered</option>
             <option value="rooms">Rooms</option>
@@ -302,10 +303,19 @@
 
         // Map generators
         const mapGenerators = {
+            empty: generateEmpty,
             maze: generateMaze,
             scatter: generateScattered,
             rooms: generateRooms
         };
+
+        function generateEmpty() {
+            clearGrid();
+            startHex = { col: 5, row: 5 };
+            endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+            grid.set(getHexKey(startHex.col, startHex.row), 'start');
+            grid.set(getHexKey(endHex.col, endHex.row), 'end');
+        }
 
         // Check if path exists between two points (BFS)
         function findPath(fromCol, fromRow, toCol, toRow) {
@@ -1284,6 +1294,7 @@
         const initialRect = canvas.getBoundingClientRect();
         canvas.width = initialRect.width;
         canvas.height = initialRect.height;
+        generateMap('empty');
         fitGridToView();
         draw();
     </script>
