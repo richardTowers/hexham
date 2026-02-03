@@ -3,7 +3,7 @@
  * @typedef {{ col: number, row: number }} HexCoord
  * @typedef {{ fill: string, stroke: string }} ColorPair
  * @typedef {'standard' | 'wall' | 'start' | 'end'} TileType
- * @typedef {'move' | 'start' | 'end' | 'wall' | 'standard'} ToolType
+ * @typedef {'start' | 'end' | 'wall' | 'standard'} ToolType
  * @typedef {{ x: number, y: number }} Point
  * @typedef {'empty' | 'maze' | 'scatter' | 'rooms'} MapType
  */
