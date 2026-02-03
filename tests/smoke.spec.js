@@ -30,7 +30,6 @@ test.describe('Hexham Pathfinding Visualizer', () => {
   });
 
   test('has all tool buttons visible', async ({ page }) => {
-    await expect(page.locator('button.tile-btn[data-type="move"]')).toBeVisible();
     await expect(page.locator('button.tile-btn[data-type="start"]')).toBeVisible();
     await expect(page.locator('button.tile-btn[data-type="end"]')).toBeVisible();
     await expect(page.locator('button.tile-btn[data-type="wall"]')).toBeVisible();
@@ -38,7 +37,7 @@ test.describe('Hexham Pathfinding Visualizer', () => {
   });
 
   test('can select each tool button', async ({ page }) => {
-    const tools = ['move', 'start', 'end', 'wall', 'standard'];
+    const tools = ['start', 'end', 'wall', 'standard'];
 
     for (const tool of tools) {
       const button = page.locator(`button.tile-btn[data-type="${tool}"]`);
@@ -135,13 +134,12 @@ test.describe('Hexham Pathfinding Visualizer', () => {
   });
 
   test('keyboard shortcuts work for tool selection', async ({ page }) => {
-    // Press 1-5 to select tools
+    // Press 1-4 to select tools
     const toolMap = {
-      '1': 'move',
-      '2': 'start',
-      '3': 'end',
-      '4': 'wall',
-      '5': 'standard'
+      '1': 'start',
+      '2': 'end',
+      '3': 'wall',
+      '4': 'standard'
     };
 
     for (const [key, tool] of Object.entries(toolMap)) {
