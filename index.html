@@ -285,6 +285,22 @@
     <div id="canvas-container">
         <canvas id="canvas"></canvas>
     </div>
-    <script type="module" src="src/main.js"></script>
+    <!-- Cache busting: update version below when deploying changes -->
+    <script type="importmap">
+    {
+        "scopes": {
+            "./src/": {
+                "./constants.js": "./constants.js?v=1",
+                "./grid.js": "./grid.js?v=1",
+                "./hex-utils.js": "./hex-utils.js?v=1",
+                "./input.js": "./input.js?v=1",
+                "./map-generators.js": "./map-generators.js?v=1",
+                "./pathfinding.js": "./pathfinding.js?v=1",
+                "./renderer.js": "./renderer.js?v=1"
+            }
+        }
+    }
+    </script>
+    <script type="module" src="src/main.js?v=1"></script>
 </body>
 </html>

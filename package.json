@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "playwright test",
+    "check": "tsc",
     "test:headed": "playwright test --headed",
     "test:debug": "playwright test --debug",
     "screenshot": "node scripts/screenshot.js"
