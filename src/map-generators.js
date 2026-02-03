@@ -328,11 +328,33 @@ export function generateRooms() {
         }
     }
 
-    // Place start and end in first and last rooms
-    const firstRoom = rooms[0];
-    const lastRoom = rooms[rooms.length - 1];
-    const startHex = { col: Math.floor(firstRoom.x + firstRoom.w / 2), row: Math.floor(firstRoom.y + firstRoom.h / 2) };
-    const endHex = { col: Math.floor(lastRoom.x + lastRoom.w / 2), row: Math.floor(lastRoom.y + lastRoom.h / 2) };
+    // Find room closest to top-left for start, and closest to bottom-right for end
+    let startRoom = rooms[0];
+    let endRoom = rooms[0];
+    let minStartDist = Infinity;
+    let minEndDist = Infinity;
+
+    for (const room of rooms) {
+        const centerX = room.x + room.w / 2;
+        const centerY = room.y + room.h / 2;
+
+        // Distance to top-left (0, 0)
+        const startDist = centerX + centerY;
+        if (startDist < minStartDist) {
+            minStartDist = startDist;
+            startRoom = room;
+        }
+
+        // Distance to bottom-right
+        const endDist = (getGridWidth() - centerX) + (getGridHeight() - centerY);
+        if (endDist < minEndDist) {
+            minEndDist = endDist;
+            endRoom = room;
+        }
+    }
+
+    const startHex = { col: Math.floor(startRoom.x + startRoom.w / 2), row: Math.floor(startRoom.y + startRoom.h / 2) };
+    const endHex = { col: Math.floor(endRoom.x + endRoom.w / 2), row: Math.floor(endRoom.y + endRoom.h / 2) };
     setStartHex(startHex);
     setEndHex(endHex);
 
