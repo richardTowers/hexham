@@ -1,5 +1,6 @@
 // Entry point - imports and initializes all modules
 
+import { updateGridDimensions } from './constants.js';
 import { setOnGridChange } from './grid.js';
 import { mapGenerators } from './map-generators.js';
 import { initRenderer, fitGridToView, resizeCanvas, draw } from './renderer.js';
@@ -15,6 +16,9 @@ initRenderer(canvas);
 const initialRect = canvas.getBoundingClientRect();
 canvas.width = initialRect.width;
 canvas.height = initialRect.height;
+
+// Calculate grid dimensions based on canvas size
+updateGridDimensions(canvas.width, canvas.height);
 
 // Initialize input handlers (needs to happen before updateGoButton is called)
 initInput();

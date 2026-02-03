@@ -3,7 +3,7 @@
  * @typedef {import('./constants.js').Point} Point
  */
 
-import { GRID_WIDTH, GRID_HEIGHT, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING } from './constants.js';
+import { getGridWidth, getGridHeight, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING } from './constants.js';
 
 /**
  * Convert hex grid coordinates to pixel coordinates
@@ -39,13 +39,13 @@ export function pixelToHex(px, py, offsetX, offsetY, scale) {
     let closestDist = Infinity;
 
     for (let row = approxRow - 1; row <= approxRow + 1; row++) {
-        if (row < 0 || row >= GRID_HEIGHT) continue;
+        if (row < 0 || row >= getGridHeight()) continue;
 
         const rowOffset = (row % 2) * (HORIZ_SPACING / 2);
         const approxCol = Math.round((worldX - HEX_WIDTH / 2 - rowOffset) / HORIZ_SPACING);
 
         for (let col = approxCol - 1; col <= approxCol + 1; col++) {
-            if (col < 0 || col >= GRID_WIDTH) continue;
+            if (col < 0 || col >= getGridWidth()) continue;
 
             const { x, y } = hexToPixel(col, row);
             const dist = Math.hypot(worldX - x, worldY - y);
@@ -83,7 +83,7 @@ export function getNeighbors(col, row) {
     for (const [dc, dr] of offsets) {
         const nc = col + dc;
         const nr = row + dr;
-        if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+        if (nc >= 0 && nc < getGridWidth() && nr >= 0 && nr < getGridHeight()) {
             neighbors.push({ col: nc, row: nr });
         }
     }

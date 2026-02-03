@@ -3,7 +3,7 @@
  * @typedef {import('./constants.js').MapType} MapType
  */
 
-import { GRID_WIDTH, GRID_HEIGHT } from './constants.js';
+import { getGridWidth, getGridHeight } from './constants.js';
 import { grid, getHexKey, clearGrid, setStartHex, setEndHex, getStartHex, getEndHex } from './grid.js';
 import { getNeighbors, heuristic } from './hex-utils.js';
 
@@ -18,7 +18,7 @@ export const mapGenerators = {
 export function generateEmpty() {
     clearGrid();
     const startHex = { col: 5, row: 5 };
-    const endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+    const endHex = { col: getGridWidth() - 6, row: getGridHeight() - 6 };
     setStartHex(startHex);
     setEndHex(endHex);
     grid.set(getHexKey(startHex.col, startHex.row), 'start');
@@ -146,16 +146,16 @@ export function generateMaze() {
     clearGrid();
 
     // Fill everything with walls first
-    for (let row = 0; row < GRID_HEIGHT; row++) {
-        for (let col = 0; col < GRID_WIDTH; col++) {
+    for (let row = 0; row < getGridHeight(); row++) {
+        for (let col = 0; col < getGridWidth(); col++) {
             grid.set(getHexKey(col, row), 'wall');
         }
     }
 
     // Use recursive backtracker with actual hex neighbors
     // Work on a sparser grid (every other cell) to create corridors
-    const mazeRows = Math.floor(GRID_HEIGHT / 2);
-    const mazeCols = Math.floor(GRID_WIDTH / 2);
+    const mazeRows = Math.floor(getGridHeight() / 2);
+    const mazeCols = Math.floor(getGridWidth() / 2);
 
     // Map maze coords to grid coords
     /** @param {number} mc @param {number} mr */
@@ -242,12 +242,12 @@ export function generateScattered() {
 
     // Place start and end first
     const startHex = { col: 5, row: 5 };
-    const endHex = { col: GRID_WIDTH - 6, row: GRID_HEIGHT - 6 };
+    const endHex = { col: getGridWidth() - 6, row: getGridHeight() - 6 };
     setStartHex(startHex);
     setEndHex(endHex);
 
-    for (let row = 0; row < GRID_HEIGHT; row++) {
-        for (let col = 0; col < GRID_WIDTH; col++) {
+    for (let row = 0; row < getGridHeight(); row++) {
+        for (let col = 0; col < getGridWidth(); col++) {
             if (Math.random() < density) {
                 grid.set(getHexKey(col, row), 'wall');
 
@@ -278,8 +278,8 @@ export function generateRooms() {
     clearGrid();
 
     // Fill with walls
-    for (let row = 0; row < GRID_HEIGHT; row++) {
-        for (let col = 0; col < GRID_WIDTH; col++) {
+    for (let row = 0; row < getGridHeight(); row++) {
+        for (let col = 0; col < getGridWidth(); col++) {
             grid.set(getHexKey(col, row), 'wall');
         }
     }
@@ -291,8 +291,8 @@ export function generateRooms() {
     for (let i = 0; i < numRooms; i++) {
         const roomW = 6 + Math.floor(Math.random() * 10);
         const roomH = 6 + Math.floor(Math.random() * 10);
-        const roomX = 2 + Math.floor(Math.random() * (GRID_WIDTH - roomW - 4));
-        const roomY = 2 + Math.floor(Math.random() * (GRID_HEIGHT - roomH - 4));
+        const roomX = 2 + Math.floor(Math.random() * (getGridWidth() - roomW - 4));
+        const roomY = 2 + Math.floor(Math.random() * (getGridHeight() - roomH - 4));
 
         rooms.push({ x: roomX, y: roomY, w: roomW, h: roomH });
 
@@ -352,7 +352,7 @@ function clearAreaAround(col, row, radius) {
         for (let dc = -radius; dc <= radius; dc++) {
             const nc = col + dc;
             const nr = row + dr;
-            if (nc >= 0 && nc < GRID_WIDTH && nr >= 0 && nr < GRID_HEIGHT) {
+            if (nc >= 0 && nc < getGridWidth() && nr >= 0 && nr < getGridHeight()) {
                 grid.delete(getHexKey(nc, nr));
             }
         }

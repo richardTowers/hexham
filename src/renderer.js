@@ -2,7 +2,7 @@
  * @typedef {import('./constants.js').HexCoord} HexCoord
  */
 
-import { GRID_WIDTH, GRID_HEIGHT, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING, TILE_TYPES, PATH_COLOR, MIN_SCALE, MAX_SCALE, getVisitedColor } from './constants.js';
+import { getGridWidth, getGridHeight, updateGridDimensions, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING, TILE_TYPES, PATH_COLOR, MIN_SCALE, MAX_SCALE, getVisitedColor } from './constants.js';
 import { getHexKey, getHexType, visitedHexes, pathHexes } from './grid.js';
 import { hexToPixel } from './hex-utils.js';
 
@@ -71,21 +71,9 @@ export function getHoveredHex() {
 }
 
 export function fitGridToView() {
-    // Calculate total grid world-space dimensions
-    const gridWorldWidth = HEX_WIDTH + GRID_WIDTH * HORIZ_SPACING;
-    const gridWorldHeight = HEX_SIZE * 2 + GRID_HEIGHT * VERT_SPACING;
-
-    // Calculate scale to fit grid in viewport with some padding
-    const padding = 20;
-    const availableWidth = canvas.width - padding * 2;
-    const availableHeight = canvas.height - padding * 2;
-
-    const scaleX = availableWidth / gridWorldWidth;
-    const scaleY = availableHeight / gridWorldHeight;
-    scale = Math.min(scaleX, scaleY, MAX_SCALE);
-    scale = Math.max(scale, MIN_SCALE);
-
-    // Position grid at top left with padding
+    // Grid fills canvas at scale 1, just add small offset for padding
+    const padding = 10;
+    scale = 1;
     offsetX = padding;
     offsetY = padding;
 }
@@ -94,6 +82,7 @@ export function resizeCanvas() {
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
+    updateGridDimensions(canvas.width, canvas.height);
     fitGridToView();
     draw();
 }
@@ -120,9 +109,9 @@ function getVisibleRange() {
     const bottom = top + canvas.height * invScale;
 
     const minCol = Math.max(0, Math.floor(left / HORIZ_SPACING) - 1);
-    const maxCol = Math.min(GRID_WIDTH - 1, Math.ceil(right / HORIZ_SPACING) + 1);
+    const maxCol = Math.min(getGridWidth() - 1, Math.ceil(right / HORIZ_SPACING) + 1);
     const minRow = Math.max(0, Math.floor(top / VERT_SPACING) - 1);
-    const maxRow = Math.min(GRID_HEIGHT - 1, Math.ceil(bottom / VERT_SPACING) + 1);
+    const maxRow = Math.min(getGridHeight() - 1, Math.ceil(bottom / VERT_SPACING) + 1);
 
     return { minCol, maxCol, minRow, maxRow };
 }
