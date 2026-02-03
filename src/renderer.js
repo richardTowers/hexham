@@ -115,12 +115,22 @@ function drawHexagon(cx, cy, size) {
 }
 
 /**
- * @param {string} hex
+ * @param {string} color
  * @param {number} amount
  * @returns {string}
  */
-function lightenColor(hex, amount) {
-    const num = parseInt(hex.slice(1), 16);
+function lightenColor(color, amount) {
+    // Handle oklch() colors
+    if (color.startsWith('oklch(')) {
+        const match = color.match(/oklch\((\d+)%\s+([\d.]+)\s+([\d.]+)\)/);
+        if (match) {
+            const lightness = Math.min(100, parseInt(match[1]) + amount);
+            return `oklch(${lightness}% ${match[2]} ${match[3]})`;
+        }
+        return color;
+    }
+    // Handle hex colors
+    const num = parseInt(color.slice(1), 16);
     const r = Math.min(255, (num >> 16) + amount);
     const g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
     const b = Math.min(255, (num & 0x0000FF) + amount);
