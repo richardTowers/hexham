@@ -21,7 +21,7 @@ async function takeScreenshot() {
     await page.waitForSelector('canvas');
 
     // Generate a maze
-    await page.locator('#map-select').selectOption('maze');
+    await page.locator('#map-select').selectOption('rooms');
     await page.locator('#generate-btn').click();
     await page.waitForTimeout(200);
 
@@ -44,7 +44,9 @@ async function takeScreenshot() {
   }
 }
 
-takeScreenshot().catch(err => {
+takeScreenshot().then(() => {
+  process.exit(0);
+}).catch(err => {
   console.error('Screenshot failed:', err);
   process.exit(1);
 });
