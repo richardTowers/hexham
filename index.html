@@ -32,6 +32,8 @@
         }
         #toolbar {
             display: flex;
+            flex-wrap: wrap;
+            align-items: center;
             gap: 8px;
             background: rgba(30, 30, 50, 0.9);
             padding: 12px;
@@ -160,6 +162,42 @@
         #generate-btn:hover {
             background: #8e44ad;
         }
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Mobile responsive styles */
+        @media (max-width: 600px) {
+            #toolbar {
+                gap: 6px;
+                padding: 8px;
+            }
+            .separator {
+                display: none;
+            }
+            .tile-btn {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+            #algorithm-select, #map-select, #speed-select {
+                padding: 6px 8px;
+                font-size: 12px;
+            }
+            #generate-btn {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            #go-btn {
+                padding: 6px 16px;
+                font-size: 13px;
+            }
+            .toolbar-group {
+                width: 100%;
+                gap: 6px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -185,29 +223,33 @@
             Standard
         </button>
         <div class="separator"></div>
-        <select id="map-select">
-            <option value="empty">Empty</option>
-            <option value="maze">Maze</option>
-            <option value="scatter">Scattered</option>
-            <option value="rooms">Rooms</option>
-        </select>
-        <button id="generate-btn">Generate</button>
+        <div class="toolbar-group">
+            <select id="map-select">
+                <option value="empty">Empty</option>
+                <option value="maze">Maze</option>
+                <option value="scatter">Scattered</option>
+                <option value="rooms">Rooms</option>
+            </select>
+            <button id="generate-btn">Generate</button>
+        </div>
         <div class="separator"></div>
-        <select id="algorithm-select">
-            <option value="bfs">Breadth First Search</option>
-            <option value="dfs">Depth First Search</option>
-            <option value="astar">A*</option>
-            <option value="greedy">Greedy Best-First</option>
-        </select>
-        <select id="speed-select">
-            <option value="slow">Slow</option>
-            <option value="normal" selected>Normal</option>
-            <option value="fast">Fast</option>
-            <option value="instant">Instant</option>
-        </select>
-        <div id="go-btn-wrapper">
-            <button id="go-btn" disabled>Go!</button>
-            <div id="go-btn-tooltip">Set a start and end point first</div>
+        <div class="toolbar-group">
+            <select id="algorithm-select">
+                <option value="bfs">Breadth First Search</option>
+                <option value="dfs">Depth First Search</option>
+                <option value="astar">A*</option>
+                <option value="greedy">Greedy Best-First</option>
+            </select>
+            <select id="speed-select">
+                <option value="slow">Slow</option>
+                <option value="normal" selected>Normal</option>
+                <option value="fast">Fast</option>
+                <option value="instant">Instant</option>
+            </select>
+            <div id="go-btn-wrapper">
+                <button id="go-btn" disabled>Go!</button>
+                <div id="go-btn-tooltip">Set a start and end point first</div>
+            </div>
         </div>
     </div>
     <canvas id="canvas"></canvas>
