@@ -255,6 +255,12 @@ export function initInput() {
         generateMap(mapType);
     });
 
+    // Auto-generate when map type is selected
+    mapSelect.addEventListener('change', () => {
+        const mapType = /** @type {MapType} */ (mapSelect.value);
+        generateMap(mapType);
+    });
+
     // Initial cursor
     updateCursor();
 }
