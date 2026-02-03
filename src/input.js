@@ -9,7 +9,7 @@ import { setHexType, getStartHex, getEndHex, getIsSearching } from './grid.js';
 import { pixelToHex, toCanvasCoords } from './hex-utils.js';
 import { mapGenerators } from './map-generators.js';
 import { runPathfinding, cancelPathfinding } from './pathfinding.js';
-import { getCanvas, getOffsetX, getOffsetY, getScale, setHoveredHex, getHoveredHex, draw } from './renderer.js';
+import { getCanvas, getOffsetX, getOffsetY, setHoveredHex, getHoveredHex, draw } from './renderer.js';
 
 // Interaction state
 /** @type {Point | null} */
@@ -107,7 +107,7 @@ export function initInput() {
 
         if (selectedTileType === 'wall' || selectedTileType === 'standard') {
             // Draw mode - paint immediately on mousedown
-            const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY(), getScale());
+            const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
             if (hex) {
                 setHexType(hex.col, hex.row, selectedTileType);
                 lastPaintedHex = hex;
@@ -122,7 +122,7 @@ export function initInput() {
         const hoveredHex = getHoveredHex();
 
         // Update hover
-        const newHovered = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY(), getScale());
+        const newHovered = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
         const hoverChanged = (!hoveredHex && newHovered) ||
                             (hoveredHex && !newHovered) ||
                             (hoveredHex && newHovered && (hoveredHex.col !== newHovered.col || hoveredHex.row !== newHovered.row));
@@ -134,7 +134,7 @@ export function initInput() {
 
         if (isMouseDown && (selectedTileType === 'wall' || selectedTileType === 'standard')) {
             // Draw mode - paint as we drag
-            const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY(), getScale());
+            const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
             if (hex && (!lastPaintedHex || hex.col !== lastPaintedHex.col || hex.row !== lastPaintedHex.row)) {
                 setHexType(hex.col, hex.row, selectedTileType);
                 lastPaintedHex = hex;
@@ -149,7 +149,7 @@ export function initInput() {
             // Start/End: click to place
             const dist = Math.hypot(pos.x - mouseDownPos.x, pos.y - mouseDownPos.y);
             if (dist < 5) {
-                const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY(), getScale());
+                const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
                 if (hex) {
                     setHexType(hex.col, hex.row, selectedTileType);
                     draw();

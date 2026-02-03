@@ -23,13 +23,12 @@ export function hexToPixel(col, row) {
  * @param {number} py
  * @param {number} offsetX
  * @param {number} offsetY
- * @param {number} scale
  * @returns {HexCoord | null}
  */
-export function pixelToHex(px, py, offsetX, offsetY, scale) {
+export function pixelToHex(px, py, offsetX, offsetY) {
     // Convert screen coords to world coords
-    const worldX = (px - offsetX) / scale;
-    const worldY = (py - offsetY) / scale;
+    const worldX = px - offsetX;
+    const worldY = py - offsetY;
 
     // Approximate row
     const approxRow = Math.round((worldY - HEX_SIZE) / VERT_SPACING);

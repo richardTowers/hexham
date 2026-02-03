@@ -60,10 +60,6 @@ export const TILE_TYPES = {
 /** @type {import('./constants.js').ColorPair} */
 export const PATH_COLOR = { fill: '#ff08e8', stroke: '#cc06b9' };
 
-// Scale limits
-export const MIN_SCALE = 0.1;
-export const MAX_SCALE = 5;
-
 /**
  * Get visited cell color based on visit order (cycles through hues)
  * @param {number} visitOrder

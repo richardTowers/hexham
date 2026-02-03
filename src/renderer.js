@@ -2,7 +2,7 @@
  * @typedef {import('./constants.js').HexCoord} HexCoord
  */
 
-import { getGridWidth, getGridHeight, updateGridDimensions, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING, TILE_TYPES, PATH_COLOR, MIN_SCALE, MAX_SCALE, getVisitedColor } from './constants.js';
+import { getGridWidth, getGridHeight, updateGridDimensions, HEX_SIZE, HEX_WIDTH, HORIZ_SPACING, VERT_SPACING, TILE_TYPES, PATH_COLOR, getVisitedColor } from './constants.js';
 import { getHexKey, getHexType, visitedHexes, pathHexes } from './grid.js';
 import { hexToPixel } from './hex-utils.js';
 
@@ -15,7 +15,6 @@ let ctx;
 // View transform state
 let offsetX = 0;
 let offsetY = 0;
-let scale = 1;
 
 // Hovered hex (for rendering)
 /** @type {HexCoord | null} */
@@ -45,11 +44,6 @@ export function getOffsetY() {
     return offsetY;
 }
 
-/** @returns {number} */
-export function getScale() {
-    return scale;
-}
-
 /** @param {number} x */
 export function setOffsetX(x) {
     offsetX = x;
@@ -71,9 +65,8 @@ export function getHoveredHex() {
 }
 
 export function fitGridToView() {
-    // Grid fills canvas at scale 1, just add small offset for padding
+    // Add small offset for padding
     const padding = 10;
-    scale = 1;
     offsetX = padding;
     offsetY = padding;
 }
@@ -87,26 +80,11 @@ export function resizeCanvas() {
     draw();
 }
 
-/**
- * Zoom toward a point (used by both wheel and pinch zoom)
- * @param {number} newScale
- * @param {number} focusX
- * @param {number} focusY
- */
-export function zoomToward(newScale, focusX, focusY) {
-    newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
-    const scaleChange = newScale / scale;
-    offsetX = focusX - (focusX - offsetX) * scaleChange;
-    offsetY = focusY - (focusY - offsetY) * scaleChange;
-    scale = newScale;
-}
-
 function getVisibleRange() {
-    const invScale = 1 / scale;
-    const left = -offsetX * invScale;
-    const top = -offsetY * invScale;
-    const right = left + canvas.width * invScale;
-    const bottom = top + canvas.height * invScale;
+    const left = -offsetX;
+    const top = -offsetY;
+    const right = left + canvas.width;
+    const bottom = top + canvas.height;
 
     const minCol = Math.max(0, Math.floor(left / HORIZ_SPACING) - 1);
     const maxCol = Math.min(getGridWidth() - 1, Math.ceil(right / HORIZ_SPACING) + 1);
@@ -155,7 +133,6 @@ export function draw() {
 
     ctx.save();
     ctx.translate(offsetX, offsetY);
-    ctx.scale(scale, scale);
 
     const { minCol, maxCol, minRow, maxRow } = getVisibleRange();
 
@@ -191,7 +168,7 @@ export function draw() {
 
             // Stroke
             ctx.strokeStyle = isHovered ? '#fff' : colors.stroke;
-            ctx.lineWidth = (isHovered ? 2 : 1) / scale;
+            ctx.lineWidth = isHovered ? 2 : 1;
             ctx.stroke();
         }
     }
