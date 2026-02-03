@@ -171,6 +171,49 @@ export function initInput() {
         draw();
     });
 
+    // Touch handlers for drawing on mobile
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const pos = toCanvasCoords(touch.clientX, touch.clientY, canvas);
+        isMouseDown = true;
+        mouseDownPos = pos;
+
+        const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
+        if (hex) {
+            setHexType(hex.col, hex.row, selectedTileType);
+            lastPaintedHex = hex;
+            draw();
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1 || !isMouseDown) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const pos = toCanvasCoords(touch.clientX, touch.clientY, canvas);
+
+        const hex = pixelToHex(pos.x, pos.y, getOffsetX(), getOffsetY());
+        if (hex && (!lastPaintedHex || hex.col !== lastPaintedHex.col || hex.row !== lastPaintedHex.row)) {
+            setHexType(hex.col, hex.row, selectedTileType);
+            lastPaintedHex = hex;
+            draw();
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', () => {
+        isMouseDown = false;
+        mouseDownPos = null;
+        lastPaintedHex = null;
+    });
+
+    canvas.addEventListener('touchcancel', () => {
+        isMouseDown = false;
+        mouseDownPos = null;
+        lastPaintedHex = null;
+    });
+
     // Keyboard shortcuts for tool selection
     document.addEventListener('keydown', (e) => {
         /** @type {Record<string, ToolType>} */
